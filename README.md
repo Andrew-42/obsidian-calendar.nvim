@@ -2,6 +2,12 @@
 
 A Neovim plugin for viewing a calendar of your daily notes in Obsidian-style markdown vaults.
 
+## Todo
+
+- [ ] display the calendar
+- [ ] add sign for notes
+- [ ] add sign diagnostics
+
 ## Installation
 
 ### Using [lazy.nvim](https://github.com/folke/lazy.nvim)
@@ -15,31 +21,6 @@ A Neovim plugin for viewing a calendar of your daily notes in Obsidian-style mar
     })
   end
 }
-```
-
-### Using [packer.nvim](https://github.com/wbthomason/packer.nvim)
-
-```lua
-use {
-  '/Users/ondrejhlavacka/Personal/0_Code/lua/obsidian-calendar',
-  config = function()
-    require('obsidian-calendar').setup({
-      -- Configuration options will be added here
-    })
-  end
-}
-```
-
-### Manual Installation
-
-Add the plugin directory to your Neovim runtimepath in your `init.lua`:
-
-```lua
-vim.opt.runtimepath:append('/Users/ondrejhlavacka/Personal/0_Code/lua/obsidian-calendar')
-
-require('obsidian-calendar').setup({
-  -- Configuration options will be added here
-})
 ```
 
 ## Usage

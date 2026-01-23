@@ -53,42 +53,100 @@ local function month_name(month)
     return names[month]
 end
 
---- Generate calendar content for current month
---- @return string[]: Array of text lines for the calendar
-local function generate_calendar_content()
-    -- Get current date
-    local today = os.date("*t")
+--- Navigate to next month
+--- @param year number: Current year
+--- @param month number: Current month (1-12)
+--- @return number, number: New year and month
+local function next_month(year, month)
+    if month == 12 then
+        return year + 1, 1
+    end
+    return year, month + 1
+end
 
+--- Navigate to previous month
+--- @param year number: Current year
+--- @param month number: Current month (1-12)
+--- @return number, number: New year and month
+local function prev_month(year, month)
+    if month == 1 then
+        return year - 1, 12
+    end
+    return year, month - 1
+end
+
+--- Get current displayed month/year from buffer state
+--- @param buf number: Buffer handle
+--- @return number, number, number|nil: year, month, highlight_day
+local function get_buffer_state(buf)
+    local year = vim.api.nvim_buf_get_var(buf, "calendar_year")
+    local month = vim.api.nvim_buf_get_var(buf, "calendar_month")
+    local highlight_day = vim.b[buf].calendar_highlight_day
+    return year, month, highlight_day
+end
+
+--- Set buffer state for displayed month/year
+--- @param buf number: Buffer handle
+--- @param year number: Year to display
+--- @param month number: Month to display
+--- @param highlight_day number|nil: Day to highlight
+local function set_buffer_state(buf, year, month, highlight_day)
+    vim.api.nvim_buf_set_var(buf, "calendar_year", year)
+    vim.api.nvim_buf_set_var(buf, "calendar_month", month)
+    vim.api.nvim_buf_set_var(buf, "calendar_highlight_day", highlight_day)
+end
+
+--- Repeat text n times
+--- @param text string
+--- @param num number
+--- @return string
+local function repeat_text(text, num)
+    local line = ""
+    for _ = 1, num do
+        line = line .. text
+    end
+    return line
+end
+
+--- Generate calendar content for a specific month
+--- @param year number: The year to display
+--- @param month number: The month to display (1-12)
+--- @param highlight_day number|nil: Optional day to highlight (or nil for no highlight)
+--- @return string[]: Array of text lines for the calendar
+local function generate_calendar_content(year, month, highlight_day)
     -- Calculate calendar parameters
-    local days = days_in_month(today.year, today.month)
-    local first_weekday = first_day_of_month(today.year, today.month)
-    local month_str = month_name(today.month)
+    local days = days_in_month(year, month)
+    local first_weekday = first_day_of_month(year, month)
+    local month_str = month_name(month)
 
     -- Build content array
     local content = {}
 
     table.insert(content, "")
-    local header = string.format("       %s %d", month_str, today.year)
+    local header_month = string.format("│         %s %d", month_str, year)
+    local header = header_month .. repeat_text(" ", 32 - string.len(header_month)) .. " │"
     table.insert(content, header)
-    table.insert(content, " ──────────────────────────── ")
-    table.insert(content, "  Mo  Tu  We  Th  Fr  Sa  Su  ")
+    table.insert(
+        content,
+        "│ ──────────────────────────── │"
+    )
+    table.insert(content, "│  Mo  Tu  We  Th  Fr  Sa  Su  │")
 
     -- Calendar grid
-    local line = " "
+    local line = "│ "
+    local line_end = " │"
     local day = 1
 
     -- Add empty cells before first day (4 chars each: space + 2-char number + space)
-    for _ = 1, first_weekday - 1 do
-        line = line .. "    "
-    end
+    line = line .. repeat_text(" ", (first_weekday - 1) * 4)
 
     -- Add days
     local current_weekday = first_weekday
     while day <= days do
-        -- Format day: space + 2-char number + space, or brackets for today
+        -- Format day: space + 2-char number + space, or brackets for highlighted day
         local day_str
-        if day == today.day then
-            -- Today: brackets replace the spaces [12] or [ 2]
+        if highlight_day and day == highlight_day then
+            -- Highlighted day: brackets replace the spaces [12] or [ 2]
             day_str = "[" .. string.format("%2d", day) .. "]"
         else
             -- Normal: space + 2-char number + space
@@ -101,12 +159,12 @@ local function generate_calendar_content()
         if current_weekday == 7 or day == days then
             -- Pad rest of week if needed (4 chars per empty cell)
             if current_weekday < 7 then
-                for i = current_weekday + 1, 7 do
+                for _ = current_weekday + 1, 7 do
                     line = line .. "    "
                 end
             end
-            table.insert(content, line)
-            line = " "
+            table.insert(content, line .. line_end)
+            line = "│ "
             current_weekday = 1
         else
             current_weekday = current_weekday + 1
@@ -116,9 +174,54 @@ local function generate_calendar_content()
     end
 
     table.insert(content, "")
-    table.insert(content, "Press q to close")
+    table.insert(content, "q: close  t: today  p: previous month  n: next month")
 
     return content
+end
+
+--- Refresh buffer content with new calendar data
+--- @param buf number: Buffer handle
+local function refresh_buffer(buf)
+    local year, month, highlight_day = get_buffer_state(buf)
+    local content = generate_calendar_content(year, month, highlight_day)
+
+    vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
+    vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
+end
+
+--- Navigate to today
+--- @param buf number: Buffer handle
+local function navigate_today(buf)
+    local today = os.date("*t")
+    set_buffer_state(buf, today.year, today.month, today.day)
+    refresh_buffer(buf)
+end
+
+--- Navigate to next month
+--- @param buf number: Buffer handle
+local function navigate_next_month(buf)
+    local year, month, _ = get_buffer_state(buf)
+    local new_year, new_month = next_month(year, month)
+
+    local today = os.date("*t")
+    local new_highlight = (new_year == today.year and new_month == today.month) and today.day or nil
+
+    set_buffer_state(buf, new_year, new_month, new_highlight)
+    refresh_buffer(buf)
+end
+
+--- Navigate to previous month
+--- @param buf number: Buffer handle
+local function navigate_prev_month(buf)
+    local year, month, _ = get_buffer_state(buf)
+    local new_year, new_month = prev_month(year, month)
+
+    local today = os.date("*t")
+    local new_highlight = (new_year == today.year and new_month == today.month) and today.day or nil
+
+    set_buffer_state(buf, new_year, new_month, new_highlight)
+    refresh_buffer(buf)
 end
 
 -- Show the calendar view in a new buffer
@@ -132,7 +235,12 @@ function M.show()
     vim.api.nvim_set_option_value("swapfile", false, { buf = buf })
     vim.api.nvim_set_option_value("filetype", "obsidian-calendar", { buf = buf })
 
-    local content = generate_calendar_content()
+    -- Initialize buffer state with current month
+    local today = os.date("*t")
+    set_buffer_state(buf, today.year, today.month, today.day)
+
+    -- Generate and set content
+    local content = generate_calendar_content(today.year, today.month, today.day)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
 
     vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
@@ -147,6 +255,34 @@ function M.show()
         noremap = true,
         silent = true,
         desc = "Close calendar view",
+    })
+
+    -- Navigation keymaps with Lua callbacks
+    vim.keymap.set("n", "t", function()
+        navigate_today(buf)
+    end, {
+        buffer = buf,
+        noremap = true,
+        silent = true,
+        desc = "Today",
+    })
+
+    vim.keymap.set("n", "n", function()
+        navigate_next_month(buf)
+    end, {
+        buffer = buf,
+        noremap = true,
+        silent = true,
+        desc = "Next month",
+    })
+
+    vim.keymap.set("n", "p", function()
+        navigate_prev_month(buf)
+    end, {
+        buffer = buf,
+        noremap = true,
+        silent = true,
+        desc = "Previous month",
     })
 end
 

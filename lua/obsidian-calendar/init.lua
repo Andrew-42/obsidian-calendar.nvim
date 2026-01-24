@@ -4,7 +4,7 @@ local M = {}
 local calendar = require("obsidian-calendar.calendar")
 
 M.config = {
-    -- TODO: Configuration options will be added here later
+    daily_notes_dir = "~/Personal/2_Areas/0_obsidian-notes/Daily Logs/",
 }
 
 -- Setup function to allow user configuration

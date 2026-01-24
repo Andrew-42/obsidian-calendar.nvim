@@ -108,6 +108,42 @@ local function repeat_text(text, num)
     return line
 end
 
+--- Get day number at current cursor position
+--- @return number|nil: Day number or nil if not on a valid day
+local function get_day_at_cursor()
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local row = cursor[1] - 1
+
+    if row < 4 then
+        return nil
+    end
+
+    local day = vim.fn.expand("<cword>")
+    return tonumber(day)
+end
+
+--- Construct daily note filename from date
+--- @param year number: Year
+--- @param month number: Month (1-12)
+--- @param day number: Day (1-31)
+--- @return string: Filename in format "yyyy-mm-dd.md"
+local function daily_note_filename(year, month, day)
+    return string.format("%04d-%02d-%02d.md", year, month, day)
+end
+
+--- Validate and expand daily notes directory path
+--- @param dir string: Directory path (may contain ~)
+--- @return string|nil, string|nil: Expanded path or nil, error message or nil
+local function validate_daily_notes_dir(dir)
+    local expanded = vim.fn.expand(dir)
+
+    if vim.fn.isdirectory(expanded) == 0 then
+        return nil, string.format("Daily notes directory does not exist: %s", expanded)
+    end
+
+    return expanded, nil
+end
+
 --- Generate calendar content for a specific month
 --- @param year number: The year to display
 --- @param month number: The month to display (1-12)
@@ -174,7 +210,7 @@ local function generate_calendar_content(year, month, highlight_day)
     end
 
     table.insert(content, "")
-    table.insert(content, "q: close  t: today  p: previous month  n: next month")
+    table.insert(content, "q: close  t: today  p: previous month  n: next month  Enter: open note")
 
     return content
 end
@@ -224,6 +260,35 @@ local function navigate_prev_month(buf)
     refresh_buffer(buf)
 end
 
+--- Open daily note for the day at cursor position
+--- @param buf number: Buffer handle
+--- @param origin_win number: Original window to open note in
+--- @param config table: Plugin configuration
+local function open_daily_note(buf, origin_win, config)
+    local day = get_day_at_cursor(buf)
+
+    if not day then
+        vim.notify("Cursor is not on a valid day", vim.log.levels.WARN)
+        return
+    end
+
+    local year, month, _ = get_buffer_state(buf)
+    local filename = daily_note_filename(year, month, day)
+
+    local daily_notes_dir, err = validate_daily_notes_dir(config.daily_notes_dir)
+    if not daily_notes_dir then
+        vim.notify(err, vim.log.levels.ERROR)
+        return
+    end
+
+    local dir = daily_notes_dir:gsub("/$", "")
+    local filepath = dir .. "/" .. filename
+
+    vim.api.nvim_set_current_win(origin_win)
+    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+    vim.api.nvim_win_close(vim.fn.bufwinid(buf), false)
+end
+
 -- Show the calendar view in a new buffer
 function M.show()
     -- Create a new buffer
@@ -244,6 +309,9 @@ function M.show()
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
 
     vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
+
+    -- Capture original window before creating split
+    local origin_win = vim.api.nvim_get_current_win()
 
     -- Open the buffer in a new window
     vim.api.nvim_command("split")
@@ -283,6 +351,16 @@ function M.show()
         noremap = true,
         silent = true,
         desc = "Previous month",
+    })
+
+    vim.keymap.set("n", "<CR>", function()
+        local main_config = require("obsidian-calendar").config
+        open_daily_note(buf, origin_win, main_config)
+    end, {
+        buffer = buf,
+        noremap = true,
+        silent = true,
+        desc = "Open daily note",
     })
 end
 

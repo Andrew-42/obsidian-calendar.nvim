@@ -1,6 +1,7 @@
 -- Calendar rendering and display logic
 
 local M = {}
+local ns_id = vim.api.nvim_create_namespace("obsidian_calendar_highlights")
 
 --- @class MonthDate
 --- @field year number: The year (e.g., 2024)
@@ -154,6 +155,190 @@ local function validate_daily_notes_dir(dir)
     return expanded, nil
 end
 
+--- Initialize highlight groups for calendar
+--- @param config table: Configuration with highlight group mappings
+local function init_highlights(config)
+    local highlight_groups = {
+        ObsidianCalendarBorder = config.highlights.border,
+        ObsidianCalendarHeader = config.highlights.header,
+        ObsidianCalendarWeekdays = config.highlights.weekdays,
+        ObsidianCalendarToday = config.highlights.today,
+        ObsidianCalendarDay = config.highlights.day,
+        ObsidianCalendarWeekend = config.highlights.weekend,
+        ObsidianCalendarSeparator = config.highlights.separator,
+        ObsidianCalendarHelp = config.highlights.help,
+    }
+
+    for group_name, link_to in pairs(highlight_groups) do
+        vim.api.nvim_set_hl(0, group_name, { link = link_to, default = true })
+    end
+end
+
+--- Highlight border characters in a line
+--- @param buf number: Buffer handle
+--- @param line string: The line content
+--- @param row number: Row index (0-based)
+local function highlight_borders(buf, line, row)
+    local col = 0
+    while true do
+        local start_col = line:find("│", col + 1, true)
+        if not start_col then
+            break
+        end
+        vim.api.nvim_buf_set_extmark(buf, ns_id, row, start_col - 1, {
+            end_col = start_col,
+            hl_group = "ObsidianCalendarBorder",
+        })
+        col = start_col
+    end
+end
+
+--- Highlight month/year header
+--- @param buf number: Buffer handle
+--- @param line string: The line content
+--- @param row number: Row index (0-based)
+local function highlight_header(buf, line, row)
+    highlight_borders(buf, line, row)
+
+    local first_border = line:find("│", 1, true)
+    local last_border = line:find("│[^│]*$")
+
+    if first_border and last_border then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, row, first_border, {
+            end_col = last_border - 1,
+            hl_group = "ObsidianCalendarHeader",
+        })
+    end
+end
+
+--- Highlight separator line
+--- @param buf number: Buffer handle
+--- @param line string: The line content
+--- @param row number: Row index (0-based)
+local function highlight_separator(buf, line, row)
+    highlight_borders(buf, line, row)
+
+    local start_col = line:find("─", 1, true)
+    if start_col then
+        local end_col = line:find(" │$")
+        if end_col then
+            vim.api.nvim_buf_set_extmark(buf, ns_id, row, start_col - 1, {
+                end_col = end_col - 1,
+                hl_group = "ObsidianCalendarSeparator",
+            })
+        end
+    end
+end
+
+--- Highlight weekday labels
+--- @param buf number: Buffer handle
+--- @param line string: The line content
+--- @param row number: Row index (0-based)
+local function highlight_weekdays(buf, line, row)
+    highlight_borders(buf, line, row)
+
+    local first_border = line:find("│", 1, true)
+    local last_border = line:find("│[^│]*$")
+
+    if first_border and last_border then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, row, first_border, {
+            end_col = last_border - 1,
+            hl_group = "ObsidianCalendarWeekdays",
+        })
+    end
+end
+
+--- Highlight calendar row with days
+--- @param buf number: Buffer handle
+--- @param line string: The line content
+--- @param row number: Row index (0-based)
+--- @param month_date MonthDate: Current displayed month
+--- @param today Date: Today's date
+--- @param first_weekday number: First weekday of the month (1=Monday, 7=Sunday)
+local function highlight_calendar_row(buf, line, row, month_date, today, first_weekday)
+    highlight_borders(buf, line, row)
+
+    local col = 0
+    while true do
+        local start_col, end_col, day_str = line:find("%[(%d+)%]", col + 1)
+        if not start_col then
+            break
+        end
+        vim.api.nvim_buf_set_extmark(buf, ns_id, row, start_col - 1, {
+            end_col = end_col,
+            hl_group = "ObsidianCalendarToday",
+            priority = 200,
+        })
+        col = end_col
+    end
+
+    col = 0
+    while true do
+        local start_col, end_col, day_str = line:find(" (%d+) ", col + 1)
+        if not start_col then
+            break
+        end
+
+        local day = tonumber(day_str)
+        if day then
+            local weekday = (first_weekday + day - 2) % 7 + 1
+
+            local hl_group = "ObsidianCalendarDay"
+            if weekday == 6 or weekday == 7 then
+                hl_group = "ObsidianCalendarWeekend"
+            end
+
+            vim.api.nvim_buf_set_extmark(buf, ns_id, row, start_col, {
+                end_col = end_col - 1,
+                hl_group = hl_group,
+            })
+        end
+        col = end_col
+    end
+end
+
+--- Highlight help text
+--- @param buf number: Buffer handle
+--- @param line string: The line content
+--- @param row number: Row index (0-based)
+local function highlight_help(buf, line, row)
+    vim.api.nvim_buf_set_extmark(buf, ns_id, row, 0, {
+        end_col = #line,
+        hl_group = "ObsidianCalendarHelp",
+    })
+end
+
+--- Apply highlights to calendar buffer using extmarks
+--- @param buf number: Buffer handle
+--- @param month_date MonthDate: The displayed month
+--- @param today Date: Today's date for highlighting
+local function apply_highlights(buf, month_date, today)
+    vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local line_count = #lines
+
+    if line_count < 5 then
+        return
+    end
+
+    local first_weekday = first_day_of_month(month_date)
+
+    highlight_header(buf, lines[2], 1)
+    highlight_separator(buf, lines[3], 2)
+    highlight_weekdays(buf, lines[4], 3)
+
+    for row = 4, line_count - 3 do
+        if lines[row + 1] then
+            highlight_calendar_row(buf, lines[row + 1], row, month_date, today, first_weekday)
+        end
+    end
+
+    if lines[line_count] then
+        highlight_help(buf, lines[line_count], line_count - 1)
+    end
+end
+
 --- Generate calendar content for a specific month
 --- @param month_date MonthDate: The month to display
 --- @param today Date: Optional day to highlight (or nil for no highlight)
@@ -233,6 +418,8 @@ local function refresh_buffer(buf)
     vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
     vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
+
+    apply_highlights(buf, month_date, today)
 end
 
 --- Navigate to today
@@ -305,11 +492,18 @@ function M.show()
     local month_date = { year = today.year, month = today.month }
     set_buffer_state(buf, month_date, today)
 
+    -- Initialize highlight groups
+    local main_config = require("obsidian-calendar").config
+    init_highlights(main_config)
+
     -- Generate and set content
     local content = generate_calendar_content(month_date, today)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
 
     vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
+
+    -- Apply highlights
+    apply_highlights(buf, month_date, today)
 
     -- Capture original window before creating split
     local origin_win = vim.api.nvim_get_current_win()

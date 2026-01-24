@@ -5,6 +5,16 @@ local calendar = require("obsidian-calendar.calendar")
 
 M.config = {
     daily_notes_dir = "~/Personal/2_Areas/0_obsidian-notes/Daily Logs/",
+    highlights = {
+        border = "FloatBorder",
+        header = "Title",
+        weekdays = "Comment",
+        today = "Special",
+        day = "Normal",
+        weekend = "Comment",
+        separator = "Comment",
+        help = "Comment",
+    },
 }
 
 -- Setup function to allow user configuration

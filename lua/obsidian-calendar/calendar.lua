@@ -2,6 +2,27 @@
 
 local M = {}
 
+--- @class MonthDate
+--- @field year number: The year (e.g., 2024)
+--- @field month number: The month (1-12)
+
+--- @class Date
+--- @field year number: The year (e.g., 2024)
+--- @field month number: The month (1-12)
+--- @field day number: The day (1-31)
+
+--- @return Date
+local function get_today_date()
+    local today = os.date("*t")
+    return { year = today.year, month = today.month, day = today.day }
+end
+
+--- @param date Date
+--- @return MonthDate
+local function to_month_date(date)
+    return { year = date.year, month = date.month }
+end
+
 --- Check if year is a leap year
 --- @param year number: The year to check
 --- @return boolean: True if leap year
@@ -10,23 +31,21 @@ local function is_leap_year(year)
 end
 
 --- Get number of days in a month
---- @param year number: The year
---- @param month number: The month (1-12)
+--- @param date MonthDate: The month to check
 --- @return number: Days in the month (28-31)
-local function days_in_month(year, month)
+local function days_in_month(date)
     local days = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
-    if month == 2 and is_leap_year(year) then
+    if date.month == 2 and is_leap_year(date.year) then
         return 29
     end
-    return days[month]
+    return days[date.month]
 end
 
 --- Get first day of month as weekday number
---- @param year number: The year
---- @param month number: The month (1-12)
+--- @param date MonthDate: The month to check
 --- @return number: Day of week (1=Monday, 7=Sunday)
-local function first_day_of_month(year, month)
-    local time = os.time({ year = year, month = month, day = 1 })
+local function first_day_of_month(date)
+    local time = os.time({ year = date.year, month = date.month, day = 1 })
     local wday = os.date("*t", time).wday
     -- Convert from Lua's Sunday=1 to Monday=1
     return wday == 1 and 7 or wday - 1
@@ -54,49 +73,42 @@ local function month_name(month)
 end
 
 --- Navigate to next month
---- @param year number: Current year
---- @param month number: Current month (1-12)
---- @return number, number: New year and month
-local function next_month(year, month)
-    if month == 12 then
-        return year + 1, 1
+--- @param date MonthDate: Current month
+--- @return MonthDate: Next month
+local function next_month(date)
+    if date.month == 12 then
+        return { year = date.year + 1, month = 1 }
     end
-    return year, month + 1
+    return { year = date.year, month = date.month + 1 }
 end
 
 --- Navigate to previous month
---- @param year number: Current year
---- @param month number: Current month (1-12)
---- @return number, number: New year and month
-local function prev_month(year, month)
-    if month == 1 then
-        return year - 1, 12
+--- @param date MonthDate: Current month
+--- @return MonthDate: Previous month
+local function prev_month(date)
+    if date.month == 1 then
+        return { year = date.year - 1, month = 12 }
     end
-    return year, month - 1
+    return { year = date.year, month = date.month - 1 }
 end
 
 --- Get current displayed month/year from buffer state
 --- @param buf number: Buffer handle
---- @return number, number, number|nil: year, month, highlight_day
+--- @return MonthDate, Date: month_date, today
 local function get_buffer_state(buf)
-    local year = vim.api.nvim_buf_get_var(buf, "calendar_year")
-    local month = vim.api.nvim_buf_get_var(buf, "calendar_month")
-    local highlight_day = vim.b[buf].calendar_highlight_day
-    return year, month, highlight_day
+    local month_date = vim.api.nvim_buf_get_var(buf, "month_date")
+    local today = vim.api.nvim_buf_get_var(buf, "today")
+    return month_date, today
 end
 
---- Set buffer state for displayed month/year
 --- @param buf number: Buffer handle
---- @param year number: Year to display
---- @param month number: Month to display
---- @param highlight_day number|nil: Day to highlight
-local function set_buffer_state(buf, year, month, highlight_day)
-    vim.api.nvim_buf_set_var(buf, "calendar_year", year)
-    vim.api.nvim_buf_set_var(buf, "calendar_month", month)
-    vim.api.nvim_buf_set_var(buf, "calendar_highlight_day", highlight_day)
+--- @param month_date MonthDate
+--- @param today Date
+local function set_buffer_state(buf, month_date, today)
+    vim.api.nvim_buf_set_var(buf, "month_date", month_date)
+    vim.api.nvim_buf_set_var(buf, "today", today)
 end
 
---- Repeat text n times
 --- @param text string
 --- @param num number
 --- @return string
@@ -123,12 +135,10 @@ local function get_day_at_cursor()
 end
 
 --- Construct daily note filename from date
---- @param year number: Year
---- @param month number: Month (1-12)
---- @param day number: Day (1-31)
+--- @param date Date: The date
 --- @return string: Filename in format "yyyy-mm-dd.md"
-local function daily_note_filename(year, month, day)
-    return string.format("%04d-%02d-%02d.md", year, month, day)
+local function daily_note_filename(date)
+    return string.format("%04d-%02d-%02d.md", date.year, date.month, date.day)
 end
 
 --- Validate and expand daily notes directory path
@@ -145,21 +155,20 @@ local function validate_daily_notes_dir(dir)
 end
 
 --- Generate calendar content for a specific month
---- @param year number: The year to display
---- @param month number: The month to display (1-12)
---- @param highlight_day number|nil: Optional day to highlight (or nil for no highlight)
+--- @param month_date MonthDate: The month to display
+--- @param today Date: Optional day to highlight (or nil for no highlight)
 --- @return string[]: Array of text lines for the calendar
-local function generate_calendar_content(year, month, highlight_day)
+local function generate_calendar_content(month_date, today)
     -- Calculate calendar parameters
-    local days = days_in_month(year, month)
-    local first_weekday = first_day_of_month(year, month)
-    local month_str = month_name(month)
+    local days = days_in_month(month_date)
+    local first_weekday = first_day_of_month(month_date)
+    local month_str = month_name(month_date.month)
 
     -- Build content array
     local content = {}
 
     table.insert(content, "")
-    local header_month = string.format("│         %s %d", month_str, year)
+    local header_month = string.format("│         %s %d", month_str, month_date.year)
     local header = header_month .. repeat_text(" ", 32 - string.len(header_month)) .. " │"
     table.insert(content, header)
     table.insert(
@@ -181,7 +190,7 @@ local function generate_calendar_content(year, month, highlight_day)
     while day <= days do
         -- Format day: space + 2-char number + space, or brackets for highlighted day
         local day_str
-        if highlight_day and day == highlight_day then
+        if month_date == to_month_date(today) and day == today.day then
             -- Highlighted day: brackets replace the spaces [12] or [ 2]
             day_str = "[" .. string.format("%2d", day) .. "]"
         else
@@ -218,8 +227,8 @@ end
 --- Refresh buffer content with new calendar data
 --- @param buf number: Buffer handle
 local function refresh_buffer(buf)
-    local year, month, highlight_day = get_buffer_state(buf)
-    local content = generate_calendar_content(year, month, highlight_day)
+    local month_date, today = get_buffer_state(buf)
+    local content = generate_calendar_content(month_date, today)
 
     vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
@@ -229,34 +238,24 @@ end
 --- Navigate to today
 --- @param buf number: Buffer handle
 local function navigate_today(buf)
-    local today = os.date("*t")
-    set_buffer_state(buf, today.year, today.month, today.day)
+    local _, today = get_buffer_state(buf)
+    set_buffer_state(buf, to_month_date(today), today)
     refresh_buffer(buf)
 end
 
 --- Navigate to next month
 --- @param buf number: Buffer handle
 local function navigate_next_month(buf)
-    local year, month, _ = get_buffer_state(buf)
-    local new_year, new_month = next_month(year, month)
-
-    local today = os.date("*t")
-    local new_highlight = (new_year == today.year and new_month == today.month) and today.day or nil
-
-    set_buffer_state(buf, new_year, new_month, new_highlight)
+    local month_date, today = get_buffer_state(buf)
+    set_buffer_state(buf, next_month(month_date), today)
     refresh_buffer(buf)
 end
 
 --- Navigate to previous month
 --- @param buf number: Buffer handle
 local function navigate_prev_month(buf)
-    local year, month, _ = get_buffer_state(buf)
-    local new_year, new_month = prev_month(year, month)
-
-    local today = os.date("*t")
-    local new_highlight = (new_year == today.year and new_month == today.month) and today.day or nil
-
-    set_buffer_state(buf, new_year, new_month, new_highlight)
+    local month_date, today = get_buffer_state(buf)
+    set_buffer_state(buf, prev_month(month_date), today)
     refresh_buffer(buf)
 end
 
@@ -265,19 +264,20 @@ end
 --- @param origin_win number: Original window to open note in
 --- @param config table: Plugin configuration
 local function open_daily_note(buf, origin_win, config)
-    local day = get_day_at_cursor(buf)
+    local day = get_day_at_cursor()
 
     if not day then
         vim.notify("Cursor is not on a valid day", vim.log.levels.WARN)
         return
     end
 
-    local year, month, _ = get_buffer_state(buf)
-    local filename = daily_note_filename(year, month, day)
+    local month_date, _ = get_buffer_state(buf)
+    local full_date = { year = month_date.year, month = month_date.month, day = day }
+    local filename = daily_note_filename(full_date)
 
     local daily_notes_dir, err = validate_daily_notes_dir(config.daily_notes_dir)
     if not daily_notes_dir then
-        vim.notify(err, vim.log.levels.ERROR)
+        vim.notify(err or "Invalid diretory", vim.log.levels.ERROR)
         return
     end
 
@@ -301,11 +301,12 @@ function M.show()
     vim.api.nvim_set_option_value("filetype", "obsidian-calendar", { buf = buf })
 
     -- Initialize buffer state with current month
-    local today = os.date("*t")
-    set_buffer_state(buf, today.year, today.month, today.day)
+    local today = get_today_date()
+    local month_date = { year = today.year, month = today.month }
+    set_buffer_state(buf, month_date, today)
 
     -- Generate and set content
-    local content = generate_calendar_content(today.year, today.month, today.day)
+    local content = generate_calendar_content(month_date, today)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
 
     vim.api.nvim_set_option_value("modifiable", false, { buf = buf })

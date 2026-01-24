@@ -1,97 +1,11 @@
 -- Calendar rendering and display logic
 
+local date_utils = require("obsidian-calendar.date_utils").utils
+local Date = require("obsidian-calendar.date_utils").Date
+local MonthDate = require("obsidian-calendar.date_utils").MonthDate
+
 local M = {}
 local ns_id = vim.api.nvim_create_namespace("obsidian_calendar_highlights")
-
---- @class MonthDate
---- @field year number: The year (e.g., 2024)
---- @field month number: The month (1-12)
-
---- @class Date
---- @field year number: The year (e.g., 2024)
---- @field month number: The month (1-12)
---- @field day number: The day (1-31)
-
---- @return Date
-local function get_today_date()
-    local today = os.date("*t")
-    return { year = today.year, month = today.month, day = today.day }
-end
-
---- @param date Date
---- @return MonthDate
-local function to_month_date(date)
-    return { year = date.year, month = date.month }
-end
-
---- Check if year is a leap year
---- @param year number: The year to check
---- @return boolean: True if leap year
-local function is_leap_year(year)
-    return (year % 4 == 0 and year % 100 ~= 0) or (year % 400 == 0)
-end
-
---- Get number of days in a month
---- @param date MonthDate: The month to check
---- @return number: Days in the month (28-31)
-local function days_in_month(date)
-    local days = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
-    if date.month == 2 and is_leap_year(date.year) then
-        return 29
-    end
-    return days[date.month]
-end
-
---- Get first day of month as weekday number
---- @param date MonthDate: The month to check
---- @return number: Day of week (1=Monday, 7=Sunday)
-local function first_day_of_month(date)
-    local time = os.time({ year = date.year, month = date.month, day = 1 })
-    local wday = os.date("*t", time).wday
-    -- Convert from Lua's Sunday=1 to Monday=1
-    return wday == 1 and 7 or wday - 1
-end
-
---- Get month name
---- @param month number: The month (1-12)
---- @return string: Month name
-local function month_name(month)
-    local names = {
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    }
-    return names[month]
-end
-
---- Navigate to next month
---- @param date MonthDate: Current month
---- @return MonthDate: Next month
-local function next_month(date)
-    if date.month == 12 then
-        return { year = date.year + 1, month = 1 }
-    end
-    return { year = date.year, month = date.month + 1 }
-end
-
---- Navigate to previous month
---- @param date MonthDate: Current month
---- @return MonthDate: Previous month
-local function prev_month(date)
-    if date.month == 1 then
-        return { year = date.year - 1, month = 12 }
-    end
-    return { year = date.year, month = date.month - 1 }
-end
 
 --- Get current displayed month/year from buffer state
 --- @param buf number: Buffer handle
@@ -99,7 +13,7 @@ end
 local function get_buffer_state(buf)
     local month_date = vim.api.nvim_buf_get_var(buf, "month_date")
     local today = vim.api.nvim_buf_get_var(buf, "today")
-    return month_date, today
+    return MonthDate.new(month_date.year, month_date.month), Date.new(today.year, today.month, today.day)
 end
 
 --- @param buf number: Buffer handle
@@ -144,15 +58,17 @@ end
 
 --- Validate and expand daily notes directory path
 --- @param dir string: Directory path (may contain ~)
---- @return string|nil, string|nil: Expanded path or nil, error message or nil
-local function validate_daily_notes_dir(dir)
+--- @return string|nil
+local function exists(dir)
     local expanded = vim.fn.expand(dir)
 
     if vim.fn.isdirectory(expanded) == 0 then
-        return nil, string.format("Daily notes directory does not exist: %s", expanded)
+        local err_msg = string.format("Daily notes directory does not exist: %s", expanded)
+        vim.notify(err_msg, vim.log.levels.ERROR)
+        return nil
     end
 
-    return expanded, nil
+    return expanded
 end
 
 --- Initialize highlight groups for calendar
@@ -281,6 +197,12 @@ local function highlight_calendar_row(buf, line, row, month_date, today, first_w
 
         local day = tonumber(day_str)
         if day then
+            -- Skip if this is today's date (already highlighted in first loop)
+            if month_date.year == today.year and month_date.month == today.month and day == today.day then
+                col = end_col
+                goto continue
+            end
+
             local weekday = (first_weekday + day - 2) % 7 + 1
 
             local hl_group = "ObsidianCalendarDay"
@@ -288,11 +210,12 @@ local function highlight_calendar_row(buf, line, row, month_date, today, first_w
                 hl_group = "ObsidianCalendarWeekend"
             end
 
-            vim.api.nvim_buf_set_extmark(buf, ns_id, row, start_col, {
-                end_col = end_col - 1,
+            vim.api.nvim_buf_set_extmark(buf, ns_id, row, start_col - 1, {
+                end_col = end_col,
                 hl_group = hl_group,
             })
         end
+        ::continue::
         col = end_col
     end
 end
@@ -322,7 +245,7 @@ local function apply_highlights(buf, month_date, today)
         return
     end
 
-    local first_weekday = first_day_of_month(month_date)
+    local first_weekday = month_date:first_day_of_month()
 
     highlight_header(buf, lines[2], 1)
     highlight_separator(buf, lines[3], 2)
@@ -345,9 +268,9 @@ end
 --- @return string[]: Array of text lines for the calendar
 local function generate_calendar_content(month_date, today)
     -- Calculate calendar parameters
-    local days = days_in_month(month_date)
-    local first_weekday = first_day_of_month(month_date)
-    local month_str = month_name(month_date.month)
+    local days = month_date:days_in_month()
+    local first_weekday = month_date:first_day_of_month()
+    local month_str = date_utils.month_name(month_date.month)
 
     -- Build content array
     local content = {}
@@ -375,7 +298,7 @@ local function generate_calendar_content(month_date, today)
     while day <= days do
         -- Format day: space + 2-char number + space, or brackets for highlighted day
         local day_str
-        if month_date == to_month_date(today) and day == today.day then
+        if month_date == today:to_month_date() and day == today.day then
             -- Highlighted day: brackets replace the spaces [12] or [ 2]
             day_str = "[" .. string.format("%2d", day) .. "]"
         else
@@ -426,7 +349,7 @@ end
 --- @param buf number: Buffer handle
 local function navigate_today(buf)
     local _, today = get_buffer_state(buf)
-    set_buffer_state(buf, to_month_date(today), today)
+    set_buffer_state(buf, today:to_month_date(), today)
     refresh_buffer(buf)
 end
 
@@ -434,7 +357,7 @@ end
 --- @param buf number: Buffer handle
 local function navigate_next_month(buf)
     local month_date, today = get_buffer_state(buf)
-    set_buffer_state(buf, next_month(month_date), today)
+    set_buffer_state(buf, month_date:next_month(), today)
     refresh_buffer(buf)
 end
 
@@ -442,7 +365,7 @@ end
 --- @param buf number: Buffer handle
 local function navigate_prev_month(buf)
     local month_date, today = get_buffer_state(buf)
-    set_buffer_state(buf, prev_month(month_date), today)
+    set_buffer_state(buf, month_date:prev_month(), today)
     refresh_buffer(buf)
 end
 
@@ -459,12 +382,11 @@ local function open_daily_note(buf, origin_win, config)
     end
 
     local month_date, _ = get_buffer_state(buf)
-    local full_date = { year = month_date.year, month = month_date.month, day = day }
+    local full_date = month_date:to_date(day)
     local filename = daily_note_filename(full_date)
 
-    local daily_notes_dir, err = validate_daily_notes_dir(config.daily_notes_dir)
+    local daily_notes_dir = exists(config.daily_notes_dir)
     if not daily_notes_dir then
-        vim.notify(err or "Invalid diretory", vim.log.levels.ERROR)
         return
     end
 
@@ -488,8 +410,8 @@ function M.show()
     vim.api.nvim_set_option_value("filetype", "obsidian-calendar", { buf = buf })
 
     -- Initialize buffer state with current month
-    local today = get_today_date()
-    local month_date = { year = today.year, month = today.month }
+    local today = date_utils.get_today_date()
+    local month_date = today:to_month_date()
     set_buffer_state(buf, month_date, today)
 
     -- Initialize highlight groups

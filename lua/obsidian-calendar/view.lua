@@ -1,15 +1,76 @@
+--- @class LineBuilder
+--- @field lines string[]: Accumulated lines
+--- @field extmarks table[]: Accumulated extmark specifications
+--- @field current_line string: Current line being built
+--- @field current_row number: Current row (0-based)
+local LineBuilder = {}
+LineBuilder.__index = LineBuilder
+
+function LineBuilder.new()
+    return setmetatable({
+        lines = {},
+        extmarks = {},
+        current_line = "",
+        current_row = 0,
+    }, LineBuilder)
+end
+
+--- Append text without highlighting
+--- @param text string
+--- @return LineBuilder: Self for chaining
+function LineBuilder:append(text)
+    self.current_line = self.current_line .. text
+    return self
+end
+
+--- Append text with highlighting
+--- @param text string
+--- @param hl_group string: Highlight group name
+--- @return LineBuilder: Self for chaining
+function LineBuilder:append_hl(text, hl_group)
+    local start_col = #self.current_line
+    self.current_line = self.current_line .. text
+    local end_col = #self.current_line
+
+    table.insert(self.extmarks, {
+        row = self.current_row,
+        start_col = start_col,
+        end_col = end_col,
+        hl_group = hl_group,
+    })
+    return self
+end
+
+--- Finish current line and move to next row
+--- @return LineBuilder: Self for chaining
+function LineBuilder:newline()
+    table.insert(self.lines, self.current_line)
+    self.current_line = ""
+    self.current_row = self.current_row + 1
+    return self
+end
+
+--- Get accumulated lines and extmarks
+--- @return string[], table[]
+function LineBuilder:build()
+    if #self.current_line > 0 then
+        self:newline()
+    end
+    return self.lines, self.extmarks
+end
+
 --- @class DayCell
 --- @field date Date: The date (e.g. 2026-01-15)
 --- @field weekday number: The week day number (1-7, Monday=1)
 --- @field text string: The text cell (" 23 " | "[12]")
 --- @field has_note boolean: Whether a daily note exists for this date (future feature)
---- @field new fun(date:Date, today:Date, has_note:boolean|nil): DayCell
+--- @field new fun(date:Date, today:Date, has_note:boolean): DayCell
 local DayCell = {}
 DayCell.__index = DayCell
 
 --- @param date Date
 --- @param today Date
---- @param has_note boolean|nil
+--- @param has_note boolean
 --- @return DayCell
 function DayCell.new(date, today, has_note)
     local is_today = date.year == today.year and date.month == today.month and date.day == today.day
@@ -57,83 +118,93 @@ function Calendar.new(month_date, today)
     }, Calendar)
 end
 
---- @return string
-function Calendar:header()
+--- @param builder LineBuilder
+function Calendar:header(builder)
     local text = self.month_date:to_text()
     local padding_left = 8
     local total_width = 28
     local padding_right = total_width - padding_left - #text
 
-    return self.border_start
-        .. string.rep(" ", padding_left)
-        .. text
-        .. string.rep(" ", padding_right)
-        .. self.border_end
+    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append(string.rep(" ", padding_left))
+    builder:append_hl(text, "ObsidianCalendarHeader")
+    builder:append(string.rep(" ", padding_right))
+    builder:append_hl(" │", "ObsidianCalendarBorder")
+    builder:newline()
 end
 
---- @return string
-function Calendar:separator()
-    return self.border_start .. string.rep("─", 28) .. self.border_end
+--- @param builder LineBuilder
+function Calendar:separator(builder)
+    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append_hl(string.rep("─", 28), "ObsidianCalendarSeparator")
+    builder:append_hl(" │", "ObsidianCalendarBorder")
+    builder:newline()
 end
 
---- @return string
-function Calendar:weekdays()
-    return self.border_start .. " Mo  Tu  We  Th  Fr  Sa  Su " .. self.border_end
+--- @param builder LineBuilder
+function Calendar:weekdays(builder)
+    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append_hl(" Mo  Tu  We  Th  Fr  Sa  Su ", "ObsidianCalendarWeekdays")
+    builder:append_hl(" │", "ObsidianCalendarBorder")
+    builder:newline()
 end
 
---- @return string[]
-function Calendar:body()
-    local lines = {}
-    local line = self.border_start
+--- @param builder LineBuilder
+function Calendar:body(builder)
     local first_weekday = self.month_date:first_day_of_month()
+    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append(string.rep(" ", (first_weekday - 1) * 4))
 
-    -- Add leading spaces for days before the first day of month
-    line = line .. string.rep(" ", (first_weekday - 1) * 4)
-
-    -- Add each day cell
     local current_weekday = first_weekday
     for _, cell in ipairs(self.day_cells) do
-        line = line .. cell.text
+        local is_today = cell.text:match("%[%d+%]") ~= nil
+        local is_weekend = (cell.weekday == 6 or cell.weekday == 7)
 
-        -- End of week or end of month
+        if is_today then
+            builder:append_hl(cell.text, "ObsidianCalendarToday")
+        elseif is_weekend then
+            builder:append_hl(cell.text, "ObsidianCalendarWeekend")
+        else
+            builder:append_hl(cell.text, "ObsidianCalendarDay")
+        end
+
         if current_weekday == 7 or cell.date.day == #self.day_cells then
-            -- Pad remaining days in the week
             if current_weekday < 7 then
-                line = line .. string.rep(" ", (7 - current_weekday) * 4)
+                builder:append(string.rep(" ", (7 - current_weekday) * 4))
             end
-            table.insert(lines, line .. self.border_end)
-            line = self.border_start
+            builder:append_hl(" │", "ObsidianCalendarBorder")
+            builder:newline()
+
+            if cell.date.day ~= #self.day_cells then
+                builder:append_hl("│ ", "ObsidianCalendarBorder")
+            end
             current_weekday = 1
         else
             current_weekday = current_weekday + 1
         end
     end
-
-    return lines
 end
 
---- @return string
-function Calendar:help()
-    return "q: close  t: today  p: previous month  n: next month  Enter: open note"
+--- @param builder LineBuilder
+function Calendar:help(builder)
+    builder:append_hl("q: close  t: today  p: previous month  n: next month  Enter: open note", "ObsidianCalendarHelp")
+    builder:newline()
 end
 
---- @return string[]
-function Calendar:to_lines()
-    local lines = {}
+--- Render calendar with highlight specifications
+--- @return string[], table[]
+function Calendar:render()
+    local builder = LineBuilder.new()
 
-    table.insert(lines, "")
-    table.insert(lines, self:header())
-    table.insert(lines, self:separator())
-    table.insert(lines, self:weekdays())
+    builder:newline()
+    self:header(builder)
+    self:separator(builder)
+    self:weekdays(builder)
+    self:body(builder)
+    builder:newline()
+    self:help(builder)
 
-    for _, body_line in ipairs(self:body()) do
-        table.insert(lines, body_line)
-    end
-
-    table.insert(lines, "")
-    table.insert(lines, self:help())
-
-    return lines
+    return builder:build()
 end
 
 local M = {}

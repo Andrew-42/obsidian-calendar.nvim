@@ -1,5 +1,6 @@
 -- Calendar rendering and display logic
 
+local file_utils = require("obsidian-calendar.file_utils")
 local date_utils = require("obsidian-calendar.date_utils").utils
 local Date = require("obsidian-calendar.date_utils").Date
 local MonthDate = require("obsidian-calendar.date_utils").MonthDate
@@ -39,28 +40,6 @@ local function get_day_at_cursor()
     return tonumber(day)
 end
 
---- Construct daily note filename from date
---- @param date Date: The date
---- @return string: Filename in format "yyyy-mm-dd.md"
-local function daily_note_filename(date)
-    return string.format("%04d-%02d-%02d.md", date.year, date.month, date.day)
-end
-
---- Validate and expand daily notes directory path
---- @param dir string: Directory path (may contain ~)
---- @return string|nil
-local function validate_daily_notes_dir(dir)
-    local expanded = vim.fn.expand(dir)
-
-    if vim.fn.isdirectory(expanded) == 0 then
-        local err_msg = string.format("Daily notes directory does not exist: %s", expanded)
-        vim.notify(err_msg, vim.log.levels.ERROR)
-        return nil
-    end
-
-    return expanded
-end
-
 --- Initialize highlight groups for calendar
 --- @param config table: Configuration with highlight group mappings
 local function init_highlights(config)
@@ -98,16 +77,17 @@ end
 --- @param month_date MonthDate: The month to display
 --- @param today Date: Day to highlight
 --- @return string[], table[]: Array of text lines and extmark specifications
-local function generate_calendar_content(month_date, today)
-    local calendar = view.Calendar.new(month_date, today)
+local function generate_calendar_content(month_date, today, daily_notes_dir)
+    local calendar = view.Calendar.new(month_date, today, daily_notes_dir)
     return calendar:render()
 end
 
 --- Refresh buffer content with new calendar data
 --- @param buf number: Buffer handle
-local function refresh_buffer(buf)
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function refresh_buffer(buf, daily_notes_dir)
     local month_date, today = get_buffer_state(buf)
-    local content, extmarks = generate_calendar_content(month_date, today)
+    local content, extmarks = generate_calendar_content(month_date, today, daily_notes_dir)
 
     vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
@@ -118,33 +98,36 @@ end
 
 --- Navigate to today
 --- @param buf number: Buffer handle
-local function navigate_today(buf)
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function navigate_today(buf, daily_notes_dir)
     local _, today = get_buffer_state(buf)
     set_buffer_state(buf, today:to_month_date(), today)
-    refresh_buffer(buf)
+    refresh_buffer(buf, daily_notes_dir)
 end
 
 --- Navigate to next month
 --- @param buf number: Buffer handle
-local function navigate_next_month(buf)
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function navigate_next_month(buf, daily_notes_dir)
     local month_date, today = get_buffer_state(buf)
     set_buffer_state(buf, month_date:next_month(), today)
-    refresh_buffer(buf)
+    refresh_buffer(buf, daily_notes_dir)
 end
 
 --- Navigate to previous month
 --- @param buf number: Buffer handle
-local function navigate_prev_month(buf)
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function navigate_prev_month(buf, daily_notes_dir)
     local month_date, today = get_buffer_state(buf)
     set_buffer_state(buf, month_date:prev_month(), today)
-    refresh_buffer(buf)
+    refresh_buffer(buf, daily_notes_dir)
 end
 
 --- Open daily note for the day at cursor position
 --- @param buf number: Buffer handle
 --- @param origin_win number: Original window to open note in
---- @param config table: Plugin configuration
-local function open_daily_note(buf, origin_win, config)
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function open_daily_note(buf, origin_win, daily_notes_dir)
     local day = get_day_at_cursor()
 
     if not day then
@@ -154,15 +137,11 @@ local function open_daily_note(buf, origin_win, config)
 
     local month_date, _ = get_buffer_state(buf)
     local full_date = month_date:to_date(day)
-    local filename = daily_note_filename(full_date)
 
-    local daily_notes_dir = validate_daily_notes_dir(config.daily_notes_dir)
-    if not daily_notes_dir then
+    local filepath = file_utils.daily_note_path(full_date, daily_notes_dir)
+    if not filepath then
         return
     end
-
-    local dir = daily_notes_dir:gsub("/$", "")
-    local filepath = dir .. "/" .. filename
 
     vim.api.nvim_set_current_win(origin_win)
     vim.cmd("edit " .. vim.fn.fnameescape(filepath))
@@ -190,7 +169,7 @@ function M.show()
     init_highlights(main_config)
 
     -- Generate and set content
-    local content, extmarks = generate_calendar_content(month_date, today)
+    local content, extmarks = generate_calendar_content(month_date, today, main_config.daily_notes_dir)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
 
     vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
@@ -205,6 +184,7 @@ function M.show()
     vim.api.nvim_command("split")
     local win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
+    vim.api.nvim_win_set_height(win, 15)
 
     -- Set buffer-local keymaps
     vim.api.nvim_buf_set_keymap(buf, "n", "q", ":q<CR>", {
@@ -215,7 +195,7 @@ function M.show()
 
     -- Navigation keymaps with Lua callbacks
     vim.keymap.set("n", "t", function()
-        navigate_today(buf)
+        navigate_today(buf, main_config.daily_notes_dir)
     end, {
         buffer = buf,
         noremap = true,
@@ -224,7 +204,7 @@ function M.show()
     })
 
     vim.keymap.set("n", "n", function()
-        navigate_next_month(buf)
+        navigate_next_month(buf, main_config.daily_notes_dir)
     end, {
         buffer = buf,
         noremap = true,
@@ -233,7 +213,7 @@ function M.show()
     })
 
     vim.keymap.set("n", "p", function()
-        navigate_prev_month(buf)
+        navigate_prev_month(buf, main_config.daily_notes_dir)
     end, {
         buffer = buf,
         noremap = true,
@@ -242,8 +222,7 @@ function M.show()
     })
 
     vim.keymap.set("n", "<CR>", function()
-        local main_config = require("obsidian-calendar").config
-        open_daily_note(buf, origin_win, main_config)
+        open_daily_note(buf, origin_win, main_config.daily_notes_dir)
     end, {
         buffer = buf,
         noremap = true,

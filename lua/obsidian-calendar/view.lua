@@ -1,3 +1,5 @@
+local file_utils = require("obsidian-calendar.file_utils")
+
 --- @class LineBuilder
 --- @field lines string[]: Accumulated lines
 --- @field extmarks table[]: Accumulated extmark specifications
@@ -63,6 +65,7 @@ end
 --- @field date Date: The date (e.g. 2026-01-15)
 --- @field weekday number: The week day number (1-7, Monday=1)
 --- @field text string: The text cell (" 23 " | "[12]")
+--- @field is_today boolean: Whether a daily note exists for this date (future feature)
 --- @field has_note boolean: Whether a daily note exists for this date (future feature)
 --- @field new fun(date:Date, today:Date, has_note:boolean): DayCell
 local DayCell = {}
@@ -80,15 +83,27 @@ function DayCell.new(date, today, has_note)
         text = "[" .. string.format("%2d", date.day) .. "]"
     else
         -- Future: when has_note is true, could use " 12·" or "*12 "
-        text = " " .. string.format("%2d", date.day) .. " "
+        local note_char
+        if has_note then
+            note_char = "·"
+        else
+            note_char = " "
+        end
+        text = note_char .. string.format("%2d", date.day) .. " "
     end
 
     return setmetatable({
         date = date,
         weekday = date:day_of_week(),
         text = text,
-        has_note = has_note or false,
+        is_today = is_today,
+        has_note = has_note,
     }, DayCell)
+end
+
+--- @return boolean
+function DayCell:is_weekend()
+    return self.weekday == 6 or self.weekday == 7
 end
 
 --- @class Calendar
@@ -96,18 +111,21 @@ end
 --- @field day_cells DayCell[]
 --- @field border_start string
 --- @field border_end string
---- @field new fun(month_date:MonthDate, today:Date): Calendar
+--- @field new fun(month_date:MonthDate, today:Date, dir:string): Calendar
 local Calendar = {}
 Calendar.__index = Calendar
 
 --- @param month_date MonthDate
 --- @param today Date
+--- @param dir string
 --- @return Calendar
-function Calendar.new(month_date, today)
+function Calendar.new(month_date, today, dir)
     local days = month_date:days_in_month()
     local cells = {}
     for day = 1, days do
-        table.insert(cells, DayCell.new(month_date:to_date(day), today, false))
+        local date = month_date:to_date(day)
+        local has_note = vim.fn.filereadable(file_utils.daily_note_path(date, dir)) == 1
+        table.insert(cells, DayCell.new(date, today, has_note))
     end
 
     return setmetatable({
@@ -151,18 +169,15 @@ end
 
 --- @param builder LineBuilder
 function Calendar:body(builder)
-    local first_weekday = self.month_date:first_day_of_month()
+    local first_weekday = self.day_cells[1].weekday
     builder:append_hl("│ ", "ObsidianCalendarBorder")
     builder:append(string.rep(" ", (first_weekday - 1) * 4))
 
     local current_weekday = first_weekday
     for _, cell in ipairs(self.day_cells) do
-        local is_today = cell.text:match("%[%d+%]") ~= nil
-        local is_weekend = (cell.weekday == 6 or cell.weekday == 7)
-
-        if is_today then
+        if cell.is_today then
             builder:append_hl(cell.text, "ObsidianCalendarToday")
-        elseif is_weekend then
+        elseif cell:is_weekend() then
             builder:append_hl(cell.text, "ObsidianCalendarWeekend")
         else
             builder:append_hl(cell.text, "ObsidianCalendarDay")

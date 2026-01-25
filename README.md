@@ -9,7 +9,7 @@ A Neovim plugin for viewing a calendar of your daily notes in Obsidian-style mar
 - [x] Weekend highlighting
 - [x] Today's date indication
 - [x] Open daily notes from calendar
-- [ ] Add signs for existing notes
+- [x] Add signs for existing notes
 - [ ] Add diagnostic signs
 
 ## Installation

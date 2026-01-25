@@ -80,8 +80,6 @@ end
 function MonthDate:to_date(day)
     return Date.new(self.year, self.month, day)
 end
-
---- @return string
 function MonthDate:to_text()
     local month_str = M.month_name(self.month)
     return string.format("%s %d", month_str, self.year)

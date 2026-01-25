@@ -73,6 +73,22 @@ local function apply_extmarks(buf, extmarks)
     end
 end
 
+--- Find cursor position for today's date by searching for bracket marker
+--- @param buf number: Buffer handle
+--- @return number, number: Row (1-indexed) and column (0-indexed)
+local function calculate_today_cursor_position(buf)
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+
+    for i, line in ipairs(lines) do
+        local col = line:find("%[")
+        if col then
+            return i, col
+        end
+    end
+
+    return 5, 2
+end
+
 --- Generate calendar content for a specific month
 --- @param month_date MonthDate: The month to display
 --- @param today Date: Day to highlight
@@ -103,6 +119,10 @@ local function navigate_today(buf, daily_notes_dir)
     local _, today = get_buffer_state(buf)
     set_buffer_state(buf, today:to_month_date(), today)
     refresh_buffer(buf, daily_notes_dir)
+
+    -- Position cursor on today's date
+    local row, col = calculate_today_cursor_position(buf)
+    vim.api.nvim_win_set_cursor(0, { row, col })
 end
 
 --- Navigate to next month
@@ -185,6 +205,10 @@ function M.show()
     local win = vim.api.nvim_get_current_win()
     vim.api.nvim_win_set_buf(win, buf)
     vim.api.nvim_win_set_height(win, 15)
+
+    -- Position cursor on today's date
+    local row, col = calculate_today_cursor_position(buf)
+    vim.api.nvim_win_set_cursor(win, { row, col })
 
     -- Set buffer-local keymaps
     vim.api.nvim_buf_set_keymap(buf, "n", "q", ":q<CR>", {

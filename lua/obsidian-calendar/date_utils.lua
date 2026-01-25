@@ -57,11 +57,21 @@ function Date.new(year, month, day)
     return setmetatable({ year = year, month = month, day = day }, Date)
 end
 
+--- @param date Date
+function Date:__eq(date)
+    return self.year == date.year and self.month == date.month and self.day == date.day
+end
+
 --- @param year number
 --- @param month number
 --- @return MonthDate
 function MonthDate.new(year, month)
     return setmetatable({ year = year, month = month }, MonthDate)
+end
+
+--- @param month_date Date
+function MonthDate:__eq(month_date)
+    return self.year == month_date.year and self.month == month_date.month
 end
 
 --- @return Date

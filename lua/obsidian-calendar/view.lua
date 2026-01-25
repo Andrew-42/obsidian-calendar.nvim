@@ -65,31 +65,40 @@ end
 --- @field date Date: The date (e.g. 2026-01-15)
 --- @field weekday number: The week day number (1-7, Monday=1)
 --- @field text string: The text cell (" 23 " | "[12]")
---- @field is_today boolean: Whether a daily note exists for this date (future feature)
+--- @field is_today boolean: Whether the date is today
 --- @field has_note boolean: Whether a daily note exists for this date (future feature)
 --- @field new fun(date:Date, today:Date, has_note:boolean): DayCell
 local DayCell = {}
 DayCell.__index = DayCell
+
+--- @param char string
+--- @param num number
+--- @param text string
+--- @return string
+local function pad_left(char, num, text)
+    local pad_len = num - #text
+    return string.rep(char, pad_len) .. text
+end
 
 --- @param date Date
 --- @param today Date
 --- @param has_note boolean
 --- @return DayCell
 function DayCell.new(date, today, has_note)
-    local is_today = date.year == today.year and date.month == today.month and date.day == today.day
+    local is_today = date == today
 
     local text
     if is_today then
-        text = "[" .. string.format("%2d", date.day) .. "]"
+        text = pad_left(" ", 4, "[" .. date.day .. "]")
     else
         -- Future: when has_note is true, could use " 12·" or "*12 "
         local note_char
         if has_note then
-            note_char = "·"
+            note_char = "x"
         else
             note_char = " "
         end
-        text = note_char .. string.format("%2d", date.day) .. " "
+        text = pad_left(" ", 4, note_char .. date.day .. " "):gsub("x", "·", 1)
     end
 
     return setmetatable({
@@ -143,34 +152,34 @@ function Calendar:header(builder)
     local total_width = 28
     local padding_right = total_width - padding_left - #text
 
-    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_start, "ObsidianCalendarBorder")
     builder:append(string.rep(" ", padding_left))
     builder:append_hl(text, "ObsidianCalendarHeader")
     builder:append(string.rep(" ", padding_right))
-    builder:append_hl(" │", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_end, "ObsidianCalendarBorder")
     builder:newline()
 end
 
 --- @param builder LineBuilder
 function Calendar:separator(builder)
-    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_start, "ObsidianCalendarBorder")
     builder:append_hl(string.rep("─", 28), "ObsidianCalendarSeparator")
-    builder:append_hl(" │", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_end, "ObsidianCalendarBorder")
     builder:newline()
 end
 
 --- @param builder LineBuilder
 function Calendar:weekdays(builder)
-    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_start, "ObsidianCalendarBorder")
     builder:append_hl(" Mo  Tu  We  Th  Fr  Sa  Su ", "ObsidianCalendarWeekdays")
-    builder:append_hl(" │", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_end, "ObsidianCalendarBorder")
     builder:newline()
 end
 
 --- @param builder LineBuilder
 function Calendar:body(builder)
     local first_weekday = self.day_cells[1].weekday
-    builder:append_hl("│ ", "ObsidianCalendarBorder")
+    builder:append_hl(self.border_start, "ObsidianCalendarBorder")
     builder:append(string.rep(" ", (first_weekday - 1) * 4))
 
     local current_weekday = first_weekday
@@ -187,11 +196,11 @@ function Calendar:body(builder)
             if current_weekday < 7 then
                 builder:append(string.rep(" ", (7 - current_weekday) * 4))
             end
-            builder:append_hl(" │", "ObsidianCalendarBorder")
+            builder:append_hl(self.border_end, "ObsidianCalendarBorder")
             builder:newline()
 
             if cell.date.day ~= #self.day_cells then
-                builder:append_hl("│ ", "ObsidianCalendarBorder")
+                builder:append_hl(self.border_start, "ObsidianCalendarBorder")
             end
             current_weekday = 1
         else

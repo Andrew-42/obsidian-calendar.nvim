@@ -1,5 +1,3 @@
--- Main plugin entry point - auto-loaded by Neovim
-
 if vim.g.loaded_obsidian_calendar then
     return
 end

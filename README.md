@@ -110,7 +110,7 @@ The plugin currently provides:
 - Daily note creation and opening directly from the calendar
 - Customizable color scheme through highlight group mappings
 
-Future features include signs for existing notes and diagnostic indicators.
+Future features include diagnostic indicators.
 
 ## License
 

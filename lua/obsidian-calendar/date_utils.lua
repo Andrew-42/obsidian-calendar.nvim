@@ -81,6 +81,12 @@ function MonthDate:to_date(day)
     return Date.new(self.year, self.month, day)
 end
 
+--- @return string
+function MonthDate:to_text()
+    local month_str = M.month_name(self.month)
+    return string.format("%s %d", month_str, self.year)
+end
+
 --- Get number of days in a month
 --- @return number: Days in the month (28-31)
 function MonthDate:days_in_month()
@@ -94,7 +100,13 @@ end
 --- Get first day of month as weekday number
 --- @return number: Day of week (1=Monday, 7=Sunday)
 function MonthDate:first_day_of_month()
-    local time = os.time({ year = self.year, month = self.month, day = 1 })
+    return self:to_date(1):day_of_week()
+end
+
+--- Get first day of month as weekday number
+--- @return number: Day of week (1=Monday, 7=Sunday)
+function Date:day_of_week()
+    local time = os.time({ year = self.year, month = self.month, day = self.day })
     local wday = os.date("*t", time).wday
     -- Convert from Lua's Sunday=1 to Monday=1
     return wday == 1 and 7 or wday - 1

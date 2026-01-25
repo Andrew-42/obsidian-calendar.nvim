@@ -3,6 +3,7 @@
 local date_utils = require("obsidian-calendar.date_utils").utils
 local Date = require("obsidian-calendar.date_utils").Date
 local MonthDate = require("obsidian-calendar.date_utils").MonthDate
+local view = require("obsidian-calendar.view")
 
 local M = {}
 local ns_id = vim.api.nvim_create_namespace("obsidian_calendar_highlights")
@@ -22,17 +23,6 @@ end
 local function set_buffer_state(buf, month_date, today)
     vim.api.nvim_buf_set_var(buf, "month_date", month_date)
     vim.api.nvim_buf_set_var(buf, "today", today)
-end
-
---- @param text string
---- @param num number
---- @return string
-local function repeat_text(text, num)
-    local line = ""
-    for _ = 1, num do
-        line = line .. text
-    end
-    return line
 end
 
 --- Get day number at current cursor position
@@ -59,7 +49,7 @@ end
 --- Validate and expand daily notes directory path
 --- @param dir string: Directory path (may contain ~)
 --- @return string|nil
-local function exists(dir)
+local function validate_daily_notes_dir(dir)
     local expanded = vim.fn.expand(dir)
 
     if vim.fn.isdirectory(expanded) == 0 then
@@ -198,10 +188,6 @@ local function highlight_calendar_row(buf, line, row, month_date, today, first_w
         local day = tonumber(day_str)
         if day then
             -- Skip if this is today's date (already highlighted in first loop)
-            if month_date.year == today.year and month_date.month == today.month and day == today.day then
-                col = end_col
-                goto continue
-            end
 
             local weekday = (first_weekday + day - 2) % 7 + 1
 
@@ -215,7 +201,6 @@ local function highlight_calendar_row(buf, line, row, month_date, today, first_w
                 hl_group = hl_group,
             })
         end
-        ::continue::
         col = end_col
     end
 end
@@ -264,72 +249,11 @@ end
 
 --- Generate calendar content for a specific month
 --- @param month_date MonthDate: The month to display
---- @param today Date: Optional day to highlight (or nil for no highlight)
+--- @param today Date: Day to highlight
 --- @return string[]: Array of text lines for the calendar
 local function generate_calendar_content(month_date, today)
-    -- Calculate calendar parameters
-    local days = month_date:days_in_month()
-    local first_weekday = month_date:first_day_of_month()
-    local month_str = date_utils.month_name(month_date.month)
-
-    -- Build content array
-    local content = {}
-
-    table.insert(content, "")
-    local header_month = string.format("│         %s %d", month_str, month_date.year)
-    local header = header_month .. repeat_text(" ", 32 - string.len(header_month)) .. " │"
-    table.insert(content, header)
-    table.insert(
-        content,
-        "│ ──────────────────────────── │"
-    )
-    table.insert(content, "│  Mo  Tu  We  Th  Fr  Sa  Su  │")
-
-    -- Calendar grid
-    local line = "│ "
-    local line_end = " │"
-    local day = 1
-
-    -- Add empty cells before first day (4 chars each: space + 2-char number + space)
-    line = line .. repeat_text(" ", (first_weekday - 1) * 4)
-
-    -- Add days
-    local current_weekday = first_weekday
-    while day <= days do
-        -- Format day: space + 2-char number + space, or brackets for highlighted day
-        local day_str
-        if month_date == today:to_month_date() and day == today.day then
-            -- Highlighted day: brackets replace the spaces [12] or [ 2]
-            day_str = "[" .. string.format("%2d", day) .. "]"
-        else
-            -- Normal: space + 2-char number + space
-            day_str = " " .. string.format("%2d", day) .. " "
-        end
-
-        line = line .. day_str
-
-        -- End of week or end of month
-        if current_weekday == 7 or day == days then
-            -- Pad rest of week if needed (4 chars per empty cell)
-            if current_weekday < 7 then
-                for _ = current_weekday + 1, 7 do
-                    line = line .. "    "
-                end
-            end
-            table.insert(content, line .. line_end)
-            line = "│ "
-            current_weekday = 1
-        else
-            current_weekday = current_weekday + 1
-        end
-
-        day = day + 1
-    end
-
-    table.insert(content, "")
-    table.insert(content, "q: close  t: today  p: previous month  n: next month  Enter: open note")
-
-    return content
+    local calendar = view.Calendar.new(month_date, today)
+    return calendar:to_lines()
 end
 
 --- Refresh buffer content with new calendar data
@@ -385,7 +309,7 @@ local function open_daily_note(buf, origin_win, config)
     local full_date = month_date:to_date(day)
     local filename = daily_note_filename(full_date)
 
-    local daily_notes_dir = exists(config.daily_notes_dir)
+    local daily_notes_dir = validate_daily_notes_dir(config.daily_notes_dir)
     if not daily_notes_dir then
         return
     end

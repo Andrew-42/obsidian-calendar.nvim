@@ -138,5 +138,25 @@ function MonthDate:prev_month()
     return MonthDate.new(self.year, self.month - 1)
 end
 
+--- Calculate day offset between two dates
+--- @param from_date Date: Starting date (typically today)
+--- @param to_date Date: Target date
+--- @return number: Number of days offset (negative for past, positive for future)
+function M.day_offset(from_date, to_date)
+    local from_time = os.time({
+        year = from_date.year,
+        month = from_date.month,
+        day = from_date.day,
+        hour = 12,
+    })
+    local to_time = os.time({
+        year = to_date.year,
+        month = to_date.month,
+        day = to_date.day,
+        hour = 12,
+    })
+    return math.floor((to_time - from_time) / 86400)
+end
+
 ---@type DateUtils
 return { utils = M, Date = Date, MonthDate = MonthDate }

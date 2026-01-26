@@ -143,6 +143,47 @@ local function navigate_prev_month(buf, daily_notes_dir)
     refresh_buffer(buf, daily_notes_dir)
 end
 
+--- Open daily note using direct file editing
+--- @param filepath string: Full path to daily note file
+--- @param origin_win number: Window to open note in
+--- @param calendar_buf number: Calendar buffer to close
+local function open_note_direct(filepath, origin_win, calendar_buf)
+    vim.api.nvim_set_current_win(origin_win)
+    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+    vim.api.nvim_win_close(vim.fn.bufwinid(calendar_buf), false)
+end
+
+--- Open daily note using obsidian.nvim command
+--- @param offset number: Day offset from today
+--- @param origin_win number: Window to open note in
+--- @param calendar_buf number: Calendar buffer to close
+--- @param command string: Obsidian command to use
+local function open_note_obsidian(offset, origin_win, calendar_buf, command)
+    vim.api.nvim_set_current_win(origin_win)
+
+    local cmd_name = command:match("^%S+")
+
+    if vim.fn.exists(":" .. cmd_name) == 0 then
+        local ok = pcall(function()
+            require("lazy").load({ plugins = "obsidian.nvim" })
+        end)
+
+        if not ok then
+            vim.notify("Could not load obsidian.nvim plugin", vim.log.levels.WARN)
+        end
+    end
+
+    local success, err = pcall(function()
+        vim.cmd(string.format(":%s %d", command, offset))
+    end)
+
+    if not success then
+        vim.notify("Failed to open daily note: " .. tostring(err), vim.log.levels.ERROR)
+    end
+
+    vim.api.nvim_win_close(vim.fn.bufwinid(calendar_buf), false)
+end
+
 --- Open daily note for the day at cursor position
 --- @param buf number: Buffer handle
 --- @param origin_win number: Original window to open note in
@@ -155,17 +196,21 @@ local function open_daily_note(buf, origin_win, daily_notes_dir)
         return
     end
 
-    local month_date, _ = get_buffer_state(buf)
-    local full_date = month_date:to_date(day)
+    local month_date, today = get_buffer_state(buf)
+    local selected_date = month_date:to_date(day)
 
-    local filepath = file_utils.daily_note_path(full_date, daily_notes_dir)
-    if not filepath then
-        return
+    local config = require("obsidian-calendar").config
+
+    if config.obsidian.enabled then
+        local offset = date_utils.day_offset(today, selected_date)
+        open_note_obsidian(offset, origin_win, buf, config.obsidian.command)
+    else
+        local filepath = file_utils.daily_note_path(selected_date, daily_notes_dir)
+        if not filepath then
+            return
+        end
+        open_note_direct(filepath, origin_win, buf)
     end
-
-    vim.api.nvim_set_current_win(origin_win)
-    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
-    vim.api.nvim_win_close(vim.fn.bufwinid(buf), false)
 end
 
 -- Show the calendar view in a new buffer

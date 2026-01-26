@@ -188,6 +188,8 @@ function Calendar:body(builder)
             builder:append_hl(cell.text, "ObsidianCalendarToday")
         elseif cell:is_weekend() then
             builder:append_hl(cell.text, "ObsidianCalendarWeekend")
+        elseif cell.date:is_czech_national_holiday() then
+            builder:append_hl(cell.text, "ObsidianCalendarWeekend")
         else
             builder:append_hl(cell.text, "ObsidianCalendarDay")
         end

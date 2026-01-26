@@ -158,5 +158,76 @@ function M.day_offset(from_date, to_date)
     return math.floor((to_time - from_time) / 86400)
 end
 
+-- Computes Easter Sunday for a given year (Gregorian calendar)
+--- @param year number
+--- @return Date
+local function easterSunday(year)
+    local a = year % 19
+    local b = math.floor(year / 100)
+    local c = year % 100
+    local d = math.floor(b / 4)
+    local e = b % 4
+    local f = math.floor((b + 8) / 25)
+    local g = math.floor((b - f + 1) / 3)
+    local h = (19 * a + b - d - g + 15) % 30
+    local i = math.floor(c / 4)
+    local k = c % 4
+    local l = (32 + 2 * e + 2 * i - h - k) % 7
+    local m = math.floor((a + 11 * h + 22 * l) / 451)
+    local month = math.floor((h + l - 7 * m + 114) / 31)
+    local day = ((h + l - 7 * m + 114) % 31) + 1
+    return Date.new(year, month, day)
+end
+
+--- Returns true if the given date is Easter Friday or Monday
+--- @param date Date
+--- @return boolean
+local function is_easter(date)
+    local sunday = easterSunday(date.year)
+    local goodFridayDay = sunday.day - 2
+    local easterMondayDay = sunday.day + 1
+
+    local easterFriday
+    if goodFridayDay <= 0 then
+        easterFriday = Date.new(sunday.year, 3, 31 + goodFridayDay)
+    else
+        easterFriday = Date.new(sunday.year, sunday.month, goodFridayDay)
+    end
+
+    local easterMonday
+    if easterMondayDay > 31 then
+        easterMonday = Date.new(sunday.year, 4, easterMondayDay - 31)
+    else
+        easterMonday = Date.new(sunday.year, sunday.month, easterMondayDay)
+    end
+
+    return date == easterFriday or date == easterMonday
+end
+
+--- Returns true if the given date is a Czech national holiday
+--- @return boolean
+function Date:is_czech_national_holiday()
+    local fixedHolidays = {
+        ["1-1"] = true, -- New Year's Day / Restoration Day
+        ["5-1"] = true, -- Labour Day
+        ["5-8"] = true, -- Liberation Day
+        ["7-5"] = true, -- Saints Cyril and Methodius
+        ["7-6"] = true, -- Jan Hus Day
+        ["9-28"] = true, -- St. Wenceslas Day
+        ["10-28"] = true, -- Independent Czechoslovak State Day
+        ["11-17"] = true, -- Struggle for Freedom and Democracy Day
+        ["12-24"] = true, -- Christmas Eve
+        ["12-25"] = true, -- Christmas Day
+        ["12-26"] = true, -- St. Stephen's Day
+    }
+
+    -- Check fixed-date holidays
+    if fixedHolidays[self.month .. "-" .. self.day] then
+        return true
+    end
+
+    return is_easter(self)
+end
+
 ---@type DateUtils
 return { utils = M, Date = Date, MonthDate = MonthDate }

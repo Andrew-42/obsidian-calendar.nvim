@@ -57,6 +57,8 @@ local function init_highlights(config)
     for group_name, link_to in pairs(highlight_groups) do
         vim.api.nvim_set_hl(0, group_name, { link = link_to, default = true })
     end
+    local weekdays_hl = vim.api.nvim_get_hl(0, { name = config.highlights.weekdays })
+    vim.api.nvim_set_hl(0, "WeekendDayNames", vim.tbl_extend("force", weekdays_hl, { underline = true }))
 end
 
 --- Apply extmarks to buffer
@@ -256,48 +258,30 @@ function M.show()
     vim.api.nvim_win_set_cursor(win, { row, col })
 
     -- Set buffer-local keymaps
-    vim.api.nvim_buf_set_keymap(buf, "n", "q", ":q<CR>", {
-        noremap = true,
-        silent = true,
-        desc = "Close calendar view",
-    })
+    vim.api.nvim_buf_set_keymap(
+        buf,
+        "n",
+        "q",
+        ":q<CR>",
+        { noremap = true, silent = true, desc = "Close calendar view" }
+    )
 
     -- Navigation keymaps with Lua callbacks
     vim.keymap.set("n", "t", function()
         navigate_today(buf, main_config.daily_notes_dir)
-    end, {
-        buffer = buf,
-        noremap = true,
-        silent = true,
-        desc = "Today",
-    })
+    end, { buffer = buf, noremap = true, silent = true, desc = "Today" })
 
     vim.keymap.set("n", "n", function()
         navigate_next_month(buf, main_config.daily_notes_dir)
-    end, {
-        buffer = buf,
-        noremap = true,
-        silent = true,
-        desc = "Next month",
-    })
+    end, { buffer = buf, noremap = true, silent = true, desc = "Next month" })
 
     vim.keymap.set("n", "p", function()
         navigate_prev_month(buf, main_config.daily_notes_dir)
-    end, {
-        buffer = buf,
-        noremap = true,
-        silent = true,
-        desc = "Previous month",
-    })
+    end, { buffer = buf, noremap = true, silent = true, desc = "Previous month" })
 
     vim.keymap.set("n", "<CR>", function()
         open_daily_note(buf, origin_win, main_config.daily_notes_dir)
-    end, {
-        buffer = buf,
-        noremap = true,
-        silent = true,
-        desc = "Open daily note",
-    })
+    end, { buffer = buf, noremap = true, silent = true, desc = "Open daily note" })
 end
 
 return M

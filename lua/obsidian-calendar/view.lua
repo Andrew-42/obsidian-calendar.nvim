@@ -26,20 +26,25 @@ function LineBuilder:append(text)
 end
 
 --- Append text with highlighting
---- @param text string
+--- @param text string|string[]
 --- @param hl_group string: Highlight group name
 --- @return LineBuilder: Self for chaining
 function LineBuilder:append_hl(text, hl_group)
-    local start_col = #self.current_line
-    self.current_line = self.current_line .. text
-    local end_col = #self.current_line
+    local parts = type(text) == "table" and text or { text }
 
-    table.insert(self.extmarks, {
-        row = self.current_row,
-        start_col = start_col,
-        end_col = end_col,
-        hl_group = hl_group,
-    })
+    for _, part in ipairs(parts) do
+        local start_col = #self.current_line
+        self.current_line = self.current_line .. part
+        local end_col = #self.current_line
+
+        table.insert(self.extmarks, {
+            row = self.current_row,
+            start_col = start_col,
+            end_col = end_col,
+            hl_group = hl_group,
+        })
+    end
+
     return self
 end
 
@@ -171,7 +176,11 @@ end
 --- @param builder LineBuilder
 function Calendar:weekdays(builder)
     builder:append_hl(self.border_start, "ObsidianCalendarBorder")
-    builder:append_hl(" Mo  Tu  We  Th  Fr  Sa  Su ", "ObsidianCalendarWeekdays")
+    builder:append_hl(" Mo  Tu  We  Th  Fr  ", "ObsidianCalendarWeekdays")
+    builder:append_hl("Sa", "WeekendDayNames")
+    builder:append("  ")
+    builder:append_hl("Su", "WeekendDayNames")
+    builder:append(" ")
     builder:append_hl(self.border_end, "ObsidianCalendarBorder")
     builder:newline()
 end

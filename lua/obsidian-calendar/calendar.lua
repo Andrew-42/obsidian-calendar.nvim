@@ -279,7 +279,7 @@ function M.show()
         navigate_prev_month(buf, main_config.daily_notes_dir)
     end, { buffer = buf, noremap = true, silent = true, desc = "Previous month" })
 
-    vim.keymap.set("n", "<CR>", function()
+    vim.keymap.set("n", "o", function()
         open_daily_note(buf, origin_win, main_config.daily_notes_dir)
     end, { buffer = buf, noremap = true, silent = true, desc = "Open daily note" })
 end

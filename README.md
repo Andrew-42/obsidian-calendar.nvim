@@ -43,7 +43,7 @@ When in the calendar view:
 - `t` - Navigate to today's date
 - `n` - Navigate to next month
 - `p` - Navigate to previous month
-- `Enter` - Open daily note for the day under cursor
+- `o` - Open daily note for the day under cursor
 
 ## Configuration
 

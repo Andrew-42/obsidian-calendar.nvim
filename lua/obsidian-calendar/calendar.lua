@@ -9,25 +9,29 @@ local ns_id = vim.api.nvim_create_namespace("obsidian_calendar_highlights")
 
 --- Get current displayed month/year from buffer state
 --- @param buf number: Buffer handle
---- @return MonthDate, Date, boolean: month_date, today, preview_mode_active, notified_missing_dates
+--- @return MonthDate, Date, boolean, boolean: month_date, today, preview_mode_active, help_visible
 local function get_buffer_state(buf)
     local month_date = vim.api.nvim_buf_get_var(buf, "month_date")
     local today = vim.api.nvim_buf_get_var(buf, "today")
     local preview_active = vim.api.nvim_buf_get_var(buf, "preview_mode_active")
+    local help_visible = vim.api.nvim_buf_get_var(buf, "help_visible")
 
     return MonthDate.new(month_date.year, month_date.month),
         Date.new(today.year, today.month, today.day),
-        preview_active
+        preview_active,
+        help_visible
 end
 
 --- @param buf number: Buffer handle
 --- @param month_date MonthDate
 --- @param today Date
 --- @param preview_mode_active boolean: Optional preview mode state
-local function set_buffer_state(buf, month_date, today, preview_mode_active)
+--- @param help_visible boolean: Optional help visible state
+local function set_buffer_state(buf, month_date, today, preview_mode_active, help_visible)
     vim.api.nvim_buf_set_var(buf, "month_date", month_date)
     vim.api.nvim_buf_set_var(buf, "today", today)
     vim.api.nvim_buf_set_var(buf, "preview_mode_active", preview_mode_active)
+    vim.api.nvim_buf_set_var(buf, "help_visible", help_visible or false)
 end
 
 --- Get day number at current cursor position
@@ -94,7 +98,7 @@ end
 --- @param origin_win number: Original window handle
 --- @param daily_notes_dir string: Daily notes directory
 local function toggle_preview_mode(calendar_buf, origin_win, daily_notes_dir)
-    local _, _, preview_active = get_buffer_state(calendar_buf)
+    local _, _, preview_active, _ = get_buffer_state(calendar_buf)
 
     if preview_active then
         vim.api.nvim_buf_set_var(calendar_buf, "preview_mode_active", false)
@@ -182,8 +186,14 @@ end
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function refresh_buffer(buf, daily_notes_dir)
-    local month_date, today = get_buffer_state(buf)
-    local content, extmarks = generate_calendar_content(month_date, today, daily_notes_dir)
+    local month_date, today, _, help_visible = get_buffer_state(buf)
+
+    local content, extmarks
+    if help_visible then
+        content, extmarks = view.render_help()
+    else
+        content, extmarks = generate_calendar_content(month_date, today, daily_notes_dir)
+    end
 
     vim.api.nvim_set_option_value("modifiable", true, { buf = buf })
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, content)
@@ -192,12 +202,24 @@ local function refresh_buffer(buf, daily_notes_dir)
     apply_extmarks(buf, extmarks)
 end
 
+--- Toggle help view on/off
+--- @param buf number: Buffer handle
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function toggle_help(buf, daily_notes_dir)
+    local month_date, today, preview_active, help_visible = get_buffer_state(buf)
+    local new_help_visible = not help_visible
+
+    set_buffer_state(buf, month_date, today, preview_active, new_help_visible)
+    refresh_buffer(buf, daily_notes_dir)
+end
+
 --- Navigate to today
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function navigate_today(buf, daily_notes_dir)
-    local _, today, preview_active = get_buffer_state(buf)
-    set_buffer_state(buf, today:to_month_date(), today, preview_active)
+    local _, today, preview_active, help_visible = get_buffer_state(buf)
+
+    set_buffer_state(buf, today:to_month_date(), today, preview_active, help_visible)
     refresh_buffer(buf, daily_notes_dir)
 
     -- Position cursor on today's date
@@ -209,8 +231,9 @@ end
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function navigate_next_month(buf, daily_notes_dir)
-    local month_date, today, preview_active = get_buffer_state(buf)
-    set_buffer_state(buf, month_date:next_month(), today, preview_active)
+    local month_date, today, preview_active, help_visible = get_buffer_state(buf)
+
+    set_buffer_state(buf, month_date:next_month(), today, preview_active, help_visible)
     refresh_buffer(buf, daily_notes_dir)
 end
 
@@ -218,8 +241,9 @@ end
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function navigate_prev_month(buf, daily_notes_dir)
-    local month_date, today, preview_active = get_buffer_state(buf)
-    set_buffer_state(buf, month_date:prev_month(), today, preview_active)
+    local month_date, today, preview_active, help_visible = get_buffer_state(buf)
+
+    set_buffer_state(buf, month_date:prev_month(), today, preview_active, help_visible)
     refresh_buffer(buf, daily_notes_dir)
 end
 
@@ -353,7 +377,7 @@ function M.show()
     -- Initialize buffer state with current month
     local today = date_utils.get_today_date()
     local month_date = today:to_month_date()
-    set_buffer_state(buf, month_date, today, false)
+    set_buffer_state(buf, month_date, today, false, false)
 
     -- Initialize highlight groups
     local main_config = require("obsidian-calendar").config
@@ -414,6 +438,10 @@ function M.show()
     vim.keymap.set("n", "P", function()
         toggle_preview_mode(buf, origin_win, main_config.daily_notes_dir)
     end, { buffer = buf, noremap = true, silent = true, desc = "Toggle preview mode" })
+
+    vim.keymap.set("n", "?", function()
+        toggle_help(buf, main_config.daily_notes_dir)
+    end, { buffer = buf, noremap = true, silent = true, desc = "Toggle help" })
 end
 
 return M

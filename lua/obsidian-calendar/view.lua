@@ -96,7 +96,7 @@ function DayCell.new(date, today, has_note)
     if is_today then
         text = pad_left(" ", 4, "[" .. date.day .. "]")
     else
-        -- Future: when has_note is true, could use " 12·" or "*12 "
+        -- it is first set to 'x' because length of '·' is 2 and it messes up the padding
         local note_char
         if has_note then
             note_char = "x"
@@ -220,16 +220,33 @@ function Calendar:body(builder)
     end
 end
 
---- @param builder LineBuilder
-function Calendar:help(builder)
-    builder:append_hl("Help:", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("q: close", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("t: today", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("p: prev month", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("n: next month", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("o: open", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("O: open without focus", "ObsidianCalendarHelp"):newline()
-    builder:append_hl("P: toggle preview", "ObsidianCalendarHelp"):newline()
+--- Render standalone help view
+--- @return string[], table[]
+local function render_help()
+    local builder = LineBuilder.new()
+
+    local function add_key(char, description)
+        builder:append("  ")
+        builder:append_hl(char, "ObsidianCalendarDay")
+        builder:append_hl(": " .. description, "ObsidianCalendarHelp")
+        builder:newline()
+    end
+
+    builder:newline()
+    builder:append_hl("Help", "ObsidianCalendarHeader")
+    builder:append_hl(" (hit ? to close help)", "ObsidianCalendarHelp")
+    builder:newline()
+    builder:newline()
+    add_key("q", "Close window")
+    add_key("t", "Focus Today")
+    add_key("p", "Previous month")
+    add_key("n", "Next month")
+    add_key("o", "Open")
+    add_key("O", "Open without focus")
+    add_key("P", "Toggle preview")
+    builder:newline()
+
+    return builder:build()
 end
 
 --- Render calendar with highlight specifications
@@ -243,7 +260,7 @@ function Calendar:render()
     self:weekdays(builder)
     self:body(builder)
     builder:newline()
-    self:help(builder)
+    builder:append_hl("Help: ?", "ObsidianCalendarHelp")
 
     return builder:build()
 end
@@ -251,4 +268,5 @@ end
 local M = {}
 M.Calendar = Calendar
 M.DayCell = DayCell
+M.render_help = render_help
 return M

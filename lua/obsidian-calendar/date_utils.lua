@@ -120,6 +120,12 @@ function Date:day_of_week()
     return wday == 1 and 7 or wday - 1
 end
 
+--- Formats date object to string key
+--- @return string: Formatted as "yyyy-mm-dd"
+function Date:to_text()
+    return string.format("%04d-%02d-%02d", self.year, self.month, self.day)
+end
+
 --- Navigate to next month
 --- @return MonthDate: Next month
 function MonthDate:next_month()

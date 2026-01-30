@@ -5,53 +5,31 @@ local date_utils = require("obsidian-calendar.date_utils").utils
 local Date = require("obsidian-calendar.date_utils").Date
 local MonthDate = require("obsidian-calendar.date_utils").MonthDate
 local view = require("obsidian-calendar.view")
-local preview = require("obsidian-calendar.preview")
 
 local M = {}
 local ns_id = vim.api.nvim_create_namespace("obsidian_calendar_highlights")
 
 --- Get current displayed month/year from buffer state
 --- @param buf number: Buffer handle
---- @return MonthDate, Date, boolean, table: month_date, today, preview_mode_active, notified_missing_dates
+--- @return MonthDate, Date, boolean: month_date, today, preview_mode_active, notified_missing_dates
 local function get_buffer_state(buf)
     local month_date = vim.api.nvim_buf_get_var(buf, "month_date")
     local today = vim.api.nvim_buf_get_var(buf, "today")
-
-    local preview_active = false
-    local notified_dates = {}
-
-    local ok, val = pcall(vim.api.nvim_buf_get_var, buf, "preview_mode_active")
-    if ok then
-        preview_active = val
-    end
-
-    ok, val = pcall(vim.api.nvim_buf_get_var, buf, "notified_missing_dates")
-    if ok then
-        notified_dates = val
-    end
+    local preview_active = vim.api.nvim_buf_get_var(buf, "preview_mode_active")
 
     return MonthDate.new(month_date.year, month_date.month),
         Date.new(today.year, today.month, today.day),
-        preview_active,
-        notified_dates
+        preview_active
 end
 
 --- @param buf number: Buffer handle
 --- @param month_date MonthDate
 --- @param today Date
---- @param preview_mode_active boolean|nil: Optional preview mode state
---- @param notified_missing_dates table|nil: Optional set of notified dates
-local function set_buffer_state(buf, month_date, today, preview_mode_active, notified_missing_dates)
+--- @param preview_mode_active boolean: Optional preview mode state
+local function set_buffer_state(buf, month_date, today, preview_mode_active)
     vim.api.nvim_buf_set_var(buf, "month_date", month_date)
     vim.api.nvim_buf_set_var(buf, "today", today)
-
-    if preview_mode_active ~= nil then
-        vim.api.nvim_buf_set_var(buf, "preview_mode_active", preview_mode_active)
-    end
-
-    if notified_missing_dates ~= nil then
-        vim.api.nvim_buf_set_var(buf, "notified_missing_dates", notified_missing_dates)
-    end
+    vim.api.nvim_buf_set_var(buf, "preview_mode_active", preview_mode_active)
 end
 
 --- Get day number at current cursor position
@@ -77,8 +55,13 @@ local function display_preview_content(origin_win, filepath)
     end
 
     local current_win = vim.api.nvim_get_current_win()
+
     vim.api.nvim_set_current_win(origin_win)
-    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+    vim.api.nvim_win_call(origin_win, function()
+        vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+        vim.cmd("doautocmd BufRead")
+    end)
+
     vim.api.nvim_set_current_win(current_win)
 end
 
@@ -87,7 +70,7 @@ end
 --- @param origin_win number: Original window to display preview in
 --- @param daily_notes_dir string: Directory containing daily notes
 local function update_preview(calendar_buf, origin_win, daily_notes_dir)
-    local month_date, today, preview_active, notified_dates = get_buffer_state(calendar_buf)
+    local month_date, _, preview_active, _ = get_buffer_state(calendar_buf)
 
     if not preview_active then
         return
@@ -101,17 +84,10 @@ local function update_preview(calendar_buf, origin_win, daily_notes_dir)
     local date = month_date:to_date(day)
     local filepath = file_utils.daily_note_path(date, daily_notes_dir)
 
-    local file_exists = preview.file_exists(filepath)
-
-    if file_exists then
+    if file_utils.file_exists(filepath) then
         display_preview_content(origin_win, filepath)
     else
-        local date_key = preview.date_to_key(date)
-        if not preview.is_date_notified(date_key, notified_dates) then
-            vim.notify(string.format("No note exists for %s", date_key), vim.log.levels.INFO)
-            preview.mark_date_notified(date_key, notified_dates)
-            set_buffer_state(calendar_buf, month_date, today, preview_active, notified_dates)
-        end
+        vim.notify(string.format("No note exists for %s", date:to_text()), vim.log.levels.INFO)
     end
 end
 
@@ -120,23 +96,17 @@ end
 --- @param origin_win number: Original window handle
 --- @param daily_notes_dir string: Daily notes directory
 local function toggle_preview_mode(calendar_buf, origin_win, daily_notes_dir)
-    local month_date, today, preview_active, notified_dates = get_buffer_state(calendar_buf)
+    local _, _, preview_active = get_buffer_state(calendar_buf)
 
     if preview_active then
         vim.api.nvim_buf_set_var(calendar_buf, "preview_mode_active", false)
-
-        vim.api.nvim_clear_autocmds({
-            buffer = calendar_buf,
-            group = "ObsidianCalendarPreview",
-        })
-
+        vim.api.nvim_clear_autocmds({ buffer = calendar_buf, group = "ObsidianCalendarPreview" })
         vim.notify("Preview mode disabled", vim.log.levels.INFO)
     else
         vim.api.nvim_buf_set_var(calendar_buf, "preview_mode_active", true)
         vim.api.nvim_buf_set_var(calendar_buf, "notified_missing_dates", {})
 
         local augroup = vim.api.nvim_create_augroup("ObsidianCalendarPreview", { clear = true })
-
         vim.api.nvim_create_autocmd("CursorMoved", {
             group = augroup,
             buffer = calendar_buf,
@@ -146,7 +116,6 @@ local function toggle_preview_mode(calendar_buf, origin_win, daily_notes_dir)
         })
 
         vim.notify("Preview mode enabled - move cursor to preview notes", vim.log.levels.INFO)
-
         update_preview(calendar_buf, origin_win, daily_notes_dir)
     end
 end
@@ -229,8 +198,8 @@ end
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function navigate_today(buf, daily_notes_dir)
-    local _, today = get_buffer_state(buf)
-    set_buffer_state(buf, today:to_month_date(), today)
+    local _, today, preview_active = get_buffer_state(buf)
+    set_buffer_state(buf, today:to_month_date(), today, preview_active)
     refresh_buffer(buf, daily_notes_dir)
 
     -- Position cursor on today's date
@@ -242,8 +211,8 @@ end
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function navigate_next_month(buf, daily_notes_dir)
-    local month_date, today = get_buffer_state(buf)
-    set_buffer_state(buf, month_date:next_month(), today)
+    local month_date, today, preview_active = get_buffer_state(buf)
+    set_buffer_state(buf, month_date:next_month(), today, preview_active)
     refresh_buffer(buf, daily_notes_dir)
 end
 
@@ -251,8 +220,8 @@ end
 --- @param buf number: Buffer handle
 --- @param daily_notes_dir string: Directory path (may contain ~)
 local function navigate_prev_month(buf, daily_notes_dir)
-    local month_date, today = get_buffer_state(buf)
-    set_buffer_state(buf, month_date:prev_month(), today)
+    local month_date, today, preview_active = get_buffer_state(buf)
+    set_buffer_state(buf, month_date:prev_month(), today, preview_active)
     refresh_buffer(buf, daily_notes_dir)
 end
 
@@ -311,14 +280,18 @@ local function open_daily_note(buf, origin_win, daily_notes_dir)
 
     local month_date, today = get_buffer_state(buf)
     local selected_date = month_date:to_date(day)
+    local filepath = file_utils.daily_note_path(selected_date, daily_notes_dir)
+
+    if file_utils.file_exists(filepath) then
+        open_note_direct(filepath, origin_win, buf)
+        return
+    end
 
     local config = require("obsidian-calendar").config
-
     if config.obsidian.enabled then
         local offset = date_utils.day_offset(today, selected_date)
         open_note_obsidian(offset, origin_win, buf, config.obsidian.command)
     else
-        local filepath = file_utils.daily_note_path(selected_date, daily_notes_dir)
         open_note_direct(filepath, origin_win, buf)
     end
 end
@@ -337,7 +310,7 @@ function M.show()
     -- Initialize buffer state with current month
     local today = date_utils.get_today_date()
     local month_date = today:to_month_date()
-    set_buffer_state(buf, month_date, today)
+    set_buffer_state(buf, month_date, today, false)
 
     -- Initialize highlight groups
     local main_config = require("obsidian-calendar").config

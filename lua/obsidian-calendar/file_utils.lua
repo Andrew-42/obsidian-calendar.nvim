@@ -1,5 +1,12 @@
 local M = {}
 
+--- Checks if a file exists
+--- @param filepath string: Absolute path to file
+--- @return boolean: True if file exists and is readable
+function M.file_exists(filepath)
+    return vim.fn.filereadable(filepath) == 1
+end
+
 --- Construct daily note filename from date
 --- @param date Date: The date
 --- @return string: Filename in format "yyyy-mm-dd.md"

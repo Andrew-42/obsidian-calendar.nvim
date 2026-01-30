@@ -222,7 +222,7 @@ end
 
 --- @param builder LineBuilder
 function Calendar:help(builder)
-    builder:append_hl("q: close  t: today  p: previous month  n: next month  Enter: open note", "ObsidianCalendarHelp")
+    builder:append_hl("q: close  t: today  p: prev month  n: next month  o: open  P: preview", "ObsidianCalendarHelp")
     builder:newline()
 end
 

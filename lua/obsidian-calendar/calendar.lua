@@ -5,25 +5,53 @@ local date_utils = require("obsidian-calendar.date_utils").utils
 local Date = require("obsidian-calendar.date_utils").Date
 local MonthDate = require("obsidian-calendar.date_utils").MonthDate
 local view = require("obsidian-calendar.view")
+local preview = require("obsidian-calendar.preview")
 
 local M = {}
 local ns_id = vim.api.nvim_create_namespace("obsidian_calendar_highlights")
 
 --- Get current displayed month/year from buffer state
 --- @param buf number: Buffer handle
---- @return MonthDate, Date: month_date, today
+--- @return MonthDate, Date, boolean, table: month_date, today, preview_mode_active, notified_missing_dates
 local function get_buffer_state(buf)
     local month_date = vim.api.nvim_buf_get_var(buf, "month_date")
     local today = vim.api.nvim_buf_get_var(buf, "today")
-    return MonthDate.new(month_date.year, month_date.month), Date.new(today.year, today.month, today.day)
+
+    local preview_active = false
+    local notified_dates = {}
+
+    local ok, val = pcall(vim.api.nvim_buf_get_var, buf, "preview_mode_active")
+    if ok then
+        preview_active = val
+    end
+
+    ok, val = pcall(vim.api.nvim_buf_get_var, buf, "notified_missing_dates")
+    if ok then
+        notified_dates = val
+    end
+
+    return MonthDate.new(month_date.year, month_date.month),
+        Date.new(today.year, today.month, today.day),
+        preview_active,
+        notified_dates
 end
 
 --- @param buf number: Buffer handle
 --- @param month_date MonthDate
 --- @param today Date
-local function set_buffer_state(buf, month_date, today)
+--- @param preview_mode_active boolean|nil: Optional preview mode state
+--- @param notified_missing_dates table|nil: Optional set of notified dates
+local function set_buffer_state(buf, month_date, today, preview_mode_active, notified_missing_dates)
     vim.api.nvim_buf_set_var(buf, "month_date", month_date)
     vim.api.nvim_buf_set_var(buf, "today", today)
+
+    if preview_mode_active ~= nil then
+        vim.api.nvim_buf_set_var(buf, "preview_mode_active", preview_mode_active)
+    end
+
+    if notified_missing_dates ~= nil then
+        vim.api.nvim_buf_set_var(buf, "notified_missing_dates", notified_missing_dates)
+    end
 end
 
 --- Get day number at current cursor position
@@ -38,6 +66,89 @@ local function get_day_at_cursor()
 
     local day = vim.fn.expand("<cword>")
     return tonumber(day)
+end
+
+--- Opens daily note file in origin window for preview
+--- @param origin_win number: Window handle
+--- @param filepath string: Path to the daily note file
+local function display_preview_content(origin_win, filepath)
+    if not vim.api.nvim_win_is_valid(origin_win) then
+        return
+    end
+
+    local current_win = vim.api.nvim_get_current_win()
+    vim.api.nvim_set_current_win(origin_win)
+    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+    vim.api.nvim_set_current_win(current_win)
+end
+
+--- Updates preview window with note content for date at cursor
+--- @param calendar_buf number: Calendar buffer handle
+--- @param origin_win number: Original window to display preview in
+--- @param daily_notes_dir string: Directory containing daily notes
+local function update_preview(calendar_buf, origin_win, daily_notes_dir)
+    local month_date, today, preview_active, notified_dates = get_buffer_state(calendar_buf)
+
+    if not preview_active then
+        return
+    end
+
+    local day = get_day_at_cursor()
+    if not day then
+        return
+    end
+
+    local date = month_date:to_date(day)
+    local filepath = file_utils.daily_note_path(date, daily_notes_dir)
+
+    local file_exists = preview.file_exists(filepath)
+
+    if file_exists then
+        display_preview_content(origin_win, filepath)
+    else
+        local date_key = preview.date_to_key(date)
+        if not preview.is_date_notified(date_key, notified_dates) then
+            vim.notify(string.format("No note exists for %s", date_key), vim.log.levels.INFO)
+            preview.mark_date_notified(date_key, notified_dates)
+            set_buffer_state(calendar_buf, month_date, today, preview_active, notified_dates)
+        end
+    end
+end
+
+--- Toggles preview mode on/off
+--- @param calendar_buf number: Calendar buffer handle
+--- @param origin_win number: Original window handle
+--- @param daily_notes_dir string: Daily notes directory
+local function toggle_preview_mode(calendar_buf, origin_win, daily_notes_dir)
+    local month_date, today, preview_active, notified_dates = get_buffer_state(calendar_buf)
+
+    if preview_active then
+        vim.api.nvim_buf_set_var(calendar_buf, "preview_mode_active", false)
+
+        vim.api.nvim_clear_autocmds({
+            buffer = calendar_buf,
+            group = "ObsidianCalendarPreview",
+        })
+
+        vim.notify("Preview mode disabled", vim.log.levels.INFO)
+    else
+        vim.api.nvim_buf_set_var(calendar_buf, "preview_mode_active", true)
+        vim.api.nvim_buf_set_var(calendar_buf, "notified_missing_dates", {})
+
+        local augroup = vim.api.nvim_create_augroup("ObsidianCalendarPreview", { clear = true })
+
+        vim.api.nvim_create_autocmd("CursorMoved", {
+            group = augroup,
+            buffer = calendar_buf,
+            callback = function()
+                update_preview(calendar_buf, origin_win, daily_notes_dir)
+            end,
+        })
+
+        vim.notify("Preview mode enabled - move cursor to preview notes", vim.log.levels.INFO)
+
+        update_preview(calendar_buf, origin_win, daily_notes_dir)
+    end
 end
 
 --- Initialize highlight groups for calendar
@@ -208,9 +319,6 @@ local function open_daily_note(buf, origin_win, daily_notes_dir)
         open_note_obsidian(offset, origin_win, buf, config.obsidian.command)
     else
         local filepath = file_utils.daily_note_path(selected_date, daily_notes_dir)
-        if not filepath then
-            return
-        end
         open_note_direct(filepath, origin_win, buf)
     end
 end
@@ -282,6 +390,10 @@ function M.show()
     vim.keymap.set("n", "o", function()
         open_daily_note(buf, origin_win, main_config.daily_notes_dir)
     end, { buffer = buf, noremap = true, silent = true, desc = "Open daily note" })
+
+    vim.keymap.set("n", "P", function()
+        toggle_preview_mode(buf, origin_win, main_config.daily_notes_dir)
+    end, { buffer = buf, noremap = true, silent = true, desc = "Toggle preview mode" })
 end
 
 return M

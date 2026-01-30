@@ -228,26 +228,31 @@ end
 --- Open daily note using direct file editing
 --- @param filepath string: Full path to daily note file
 --- @param origin_win number: Window to open note in
---- @param calendar_buf number: Calendar buffer to close
-local function open_note_direct(filepath, origin_win, calendar_buf)
+--- @param calendar_buf number: Calendar buffer
+--- @param close_calendar boolean: Close calendar buffer and focus open note
+local function open_note_direct(filepath, origin_win, calendar_buf, close_calendar)
+    local current_win = vim.api.nvim_get_current_win()
     vim.api.nvim_set_current_win(origin_win)
     vim.cmd("edit " .. vim.fn.fnameescape(filepath))
-    vim.api.nvim_win_close(vim.fn.bufwinid(calendar_buf), false)
+    if close_calendar then
+        vim.api.nvim_win_close(vim.fn.bufwinid(calendar_buf), false)
+    else
+        vim.api.nvim_set_current_win(current_win)
+    end
 end
 
 --- Open daily note using obsidian.nvim command
 --- @param offset number: Day offset from today
 --- @param origin_win number: Window to open note in
 --- @param calendar_buf number: Calendar buffer to close
---- @param command string: Obsidian command to use
-local function open_note_obsidian(offset, origin_win, calendar_buf, command)
+--- @param close_calendar boolean: Close calendar buffer and focus open note
+local function open_note_obsidian(offset, origin_win, calendar_buf, close_calendar)
+    local current_win = vim.api.nvim_get_current_win()
     vim.api.nvim_set_current_win(origin_win)
 
-    local cmd_name = command:match("^%S+")
-
-    if vim.fn.exists(":" .. cmd_name) == 0 then
+    if vim.fn.exists(":ObsidianToday") == 0 then
         local ok = pcall(function()
-            require("lazy").load({ plugins = "obsidian.nvim" })
+            require("lazy").load({ plugins = { "obsidian.nvim" } })
         end)
 
         if not ok then
@@ -256,21 +261,26 @@ local function open_note_obsidian(offset, origin_win, calendar_buf, command)
     end
 
     local success, err = pcall(function()
-        vim.cmd(string.format(":%s %d", command, offset))
+        vim.cmd(string.format(":ObsidianToday %d", offset))
     end)
 
     if not success then
         vim.notify("Failed to open daily note: " .. tostring(err), vim.log.levels.ERROR)
     end
 
-    vim.api.nvim_win_close(vim.fn.bufwinid(calendar_buf), false)
+    if close_calendar then
+        vim.api.nvim_win_close(vim.fn.bufwinid(calendar_buf), false)
+    else
+        vim.api.nvim_set_current_win(current_win)
+    end
 end
 
 --- Open daily note for the day at cursor position
 --- @param buf number: Buffer handle
 --- @param origin_win number: Original window to open note in
 --- @param daily_notes_dir string: Directory path (may contain ~)
-local function open_daily_note(buf, origin_win, daily_notes_dir)
+--- @param close_calendar boolean: Close calendar buffer and focus open note
+local function open_daily_note(buf, origin_win, daily_notes_dir, close_calendar)
     local day = get_day_at_cursor()
 
     if not day then
@@ -283,16 +293,15 @@ local function open_daily_note(buf, origin_win, daily_notes_dir)
     local filepath = file_utils.daily_note_path(selected_date, daily_notes_dir)
 
     if file_utils.file_exists(filepath) then
-        open_note_direct(filepath, origin_win, buf)
+        open_note_direct(filepath, origin_win, buf, close_calendar)
         return
     end
 
-    local config = require("obsidian-calendar").config
-    if config.obsidian.enabled then
+    if require("obsidian-calendar").config.obsidian.enabled then
         local offset = date_utils.day_offset(today, selected_date)
-        open_note_obsidian(offset, origin_win, buf, config.obsidian.command)
+        open_note_obsidian(offset, origin_win, buf, close_calendar)
     else
-        open_note_direct(filepath, origin_win, buf)
+        open_note_direct(filepath, origin_win, buf, close_calendar)
     end
 end
 
@@ -361,7 +370,11 @@ function M.show()
     end, { buffer = buf, noremap = true, silent = true, desc = "Previous month" })
 
     vim.keymap.set("n", "o", function()
-        open_daily_note(buf, origin_win, main_config.daily_notes_dir)
+        open_daily_note(buf, origin_win, main_config.daily_notes_dir, true)
+    end, { buffer = buf, noremap = true, silent = true, desc = "Open daily note" })
+
+    vim.keymap.set("n", "O", function()
+        open_daily_note(buf, origin_win, main_config.daily_notes_dir, false)
     end, { buffer = buf, noremap = true, silent = true, desc = "Open daily note" })
 
     vim.keymap.set("n", "P", function()

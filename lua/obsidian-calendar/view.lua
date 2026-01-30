@@ -222,11 +222,14 @@ end
 
 --- @param builder LineBuilder
 function Calendar:help(builder)
-    builder:append_hl(
-        "q: close  t: today  p: prev month  n: next month  o: open  P: toggle preview",
-        "ObsidianCalendarHelp"
-    )
-    builder:newline()
+    builder:append_hl("Help:", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("q: close", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("t: today", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("p: prev month", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("n: next month", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("o: open", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("O: open without focus", "ObsidianCalendarHelp"):newline()
+    builder:append_hl("P: toggle preview", "ObsidianCalendarHelp"):newline()
 end
 
 --- Render calendar with highlight specifications

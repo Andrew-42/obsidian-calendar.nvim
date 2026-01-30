@@ -5,10 +5,7 @@ local M = {}
 
 M.config = {
     daily_notes_dir = "~/path/to/your/daily-notes/",
-    obsidian = {
-        enabled = true,
-        command = "ObsidianToday",
-    },
+    obsidian = { enabled = true },
     highlights = {
         border = "Delimiter",
         header = "Function",

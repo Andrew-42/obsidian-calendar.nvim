@@ -1,5 +1,3 @@
--- Calendar rendering and display logic
-
 local file_utils = require("obsidian-calendar.file_utils")
 local date_utils = require("obsidian-calendar.date_utils").utils
 local Date = require("obsidian-calendar.date_utils").Date
@@ -305,8 +303,44 @@ local function open_daily_note(buf, origin_win, daily_notes_dir, close_calendar)
     end
 end
 
+--- Find existing calendar buffer if it exists
+--- @return number|nil: Buffer handle or nil if not found
+local function find_existing_calendar_buffer()
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_valid(buf) then
+            local filetype = vim.api.nvim_get_option_value("filetype", { buf = buf })
+            if filetype == "obsidian-calendar" then
+                return buf
+            end
+        end
+    end
+    return nil
+end
+
+--- Find window displaying a specific buffer
+--- @param buf number: Buffer handle
+--- @return number|nil: Window handle or nil if not found
+local function find_buffer_window(buf)
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf then
+            return win
+        end
+    end
+    return nil
+end
+
 -- Show the calendar view in a new buffer
 function M.show()
+    -- Check if calendar is already open
+    local existing_buf = find_existing_calendar_buffer()
+    if existing_buf then
+        local existing_win = find_buffer_window(existing_buf)
+        if existing_win then
+            vim.api.nvim_set_current_win(existing_win)
+            return
+        end
+    end
+
     -- Create a new buffer
     local buf = vim.api.nvim_create_buf(false, true)
 

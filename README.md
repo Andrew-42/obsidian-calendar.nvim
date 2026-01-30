@@ -12,7 +12,7 @@ A Neovim plugin for viewing a calendar of your daily notes in Obsidian-style mar
 - [x] Add signs for existing notes
 - [ ] Add diagnostic signs
 - [x] Add czech holidays
-- [ ] Add notes preview
+- [x] Add notes preview
 - [ ] Add separate help
 
 ## Installation

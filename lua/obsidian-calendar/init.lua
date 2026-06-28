@@ -1,8 +1,25 @@
 local calendar = require("obsidian-calendar.calendar")
 local file_utils = require("obsidian-calendar.file_utils")
 
+--- @class ObsidianCalendarHighlights
+--- @field border string: Window border characters (│, ─)
+--- @field header string: Month/year title line
+--- @field weekdays string: Weekday names row (Mo Tu We Th Fr)
+--- @field today string: Today's date cell (`[N]`)
+--- @field day string: Regular weekday cells
+--- @field weekend string: Saturday/Sunday and Czech national holiday cells
+--- @field separator string: Horizontal separator under the header
+--- @field help string: Help text (footer hint and help view body)
+
+--- @class ObsidianCalendarConfig
+--- @field daily_notes_dir string: Directory containing daily notes (~ is expanded)
+--- @field obsidian { enabled: boolean }: obsidian.nvim integration — when enabled, opening a missing note delegates to `:ObsidianToday <offset>`
+--- @field highlights ObsidianCalendarHighlights: Highlight group links (set as `default`, so user overrides win)
+--- @field day_highlight (fun(cell: DayCell): string|nil)?: Override per-day highlight; called for every non-today cell, return a hl group or nil for defaults
+
 local M = {}
 
+--- @type ObsidianCalendarConfig
 M.config = {
     daily_notes_dir = "~/path/to/your/daily-notes/",
     obsidian = { enabled = true },
@@ -16,12 +33,11 @@ M.config = {
         separator = "Delimiter",
         help = "Comment",
     },
-    --- Optional callback to override the highlight group for a day cell.
-    --- Return a highlight group name to override, or nil to use defaults.
-    --- @type fun(cell: DayCell): string|nil
     day_highlight = nil,
 }
 
+--- Initialize the plugin with user configuration.
+--- @param opts ObsidianCalendarConfig?: User config; merged over defaults
 function M.setup(opts)
     opts = opts or {}
     M.config = vim.tbl_deep_extend("force", M.config, opts)

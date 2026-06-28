@@ -125,15 +125,17 @@ end
 --- @field day_cells DayCell[]
 --- @field border_start string
 --- @field border_end string
---- @field new fun(month_date:MonthDate, today:Date, dir:string): Calendar
+--- @field day_highlight fun(cell: DayCell): string|nil
+--- @field new fun(month_date:MonthDate, today:Date, dir:string, day_highlight:(fun(cell:DayCell):string|nil)?): Calendar
 local Calendar = {}
 Calendar.__index = Calendar
 
 --- @param month_date MonthDate
 --- @param today Date
 --- @param dir string
+--- @param day_highlight (fun(cell: DayCell): string|nil)?
 --- @return Calendar
-function Calendar.new(month_date, today, dir)
+function Calendar.new(month_date, today, dir, day_highlight)
     local days = month_date:days_in_month()
     local cells = {}
     for day = 1, days do
@@ -147,6 +149,7 @@ function Calendar.new(month_date, today, dir)
         day_cells = cells,
         border_start = "│ ",
         border_end = " │",
+        day_highlight = day_highlight,
     }, Calendar)
 end
 
@@ -193,8 +196,11 @@ function Calendar:body(builder)
 
     local current_weekday = first_weekday
     for _, cell in ipairs(self.day_cells) do
+        local custom_hl = self.day_highlight and self.day_highlight(cell)
         if cell.is_today then
             builder:append_hl(cell.text, "ObsidianCalendarToday")
+        elseif custom_hl then
+            builder:append_hl(cell.text, custom_hl)
         elseif cell:is_weekend() then
             builder:append_hl(cell.text, "ObsidianCalendarWeekend")
         elseif cell.date:is_czech_national_holiday() then

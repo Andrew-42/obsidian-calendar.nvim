@@ -16,6 +16,10 @@ M.config = {
         separator = "Delimiter",
         help = "Comment",
     },
+    --- Optional callback to override the highlight group for a day cell.
+    --- Return a highlight group name to override, or nil to use defaults.
+    --- @type fun(cell: DayCell): string|nil
+    day_highlight = nil,
 }
 
 function M.setup(opts)

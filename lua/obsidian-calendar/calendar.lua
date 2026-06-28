@@ -178,7 +178,8 @@ end
 --- @param today Date: Day to highlight
 --- @return string[], table[]: Array of text lines and extmark specifications
 local function generate_calendar_content(month_date, today, daily_notes_dir)
-    local calendar = view.Calendar.new(month_date, today, daily_notes_dir)
+    local day_highlight = require("obsidian-calendar").config.day_highlight
+    local calendar = view.Calendar.new(month_date, today, daily_notes_dir, day_highlight)
     return calendar:render()
 end
 

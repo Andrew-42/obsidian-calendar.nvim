@@ -354,6 +354,43 @@ local function find_buffer_window(buf)
     return nil
 end
 
+--- Re-render the calendar when diagnostics change for a daily note
+--- @param buf number: Calendar buffer handle
+--- @param daily_notes_dir string: Directory path (may contain ~)
+local function setup_diagnostic_refresh(buf, daily_notes_dir)
+    local expanded = vim.fn.expand(daily_notes_dir):gsub("/$", "") .. "/"
+    local pending = false
+    local group = vim.api.nvim_create_augroup("ObsidianCalendarDiagnostics_" .. buf, { clear = true })
+
+    vim.api.nvim_create_autocmd("DiagnosticChanged", {
+        group = group,
+        callback = function(args)
+            local name = vim.api.nvim_buf_get_name(args.buf)
+            if name == "" or not vim.startswith(name, expanded) then
+                return
+            end
+            if pending then
+                return
+            end
+            pending = true
+            vim.defer_fn(function()
+                pending = false
+                if vim.api.nvim_buf_is_valid(buf) then
+                    refresh_buffer(buf, daily_notes_dir)
+                end
+            end, 300)
+        end,
+    })
+
+    vim.api.nvim_create_autocmd("BufWipeout", {
+        group = group,
+        buffer = buf,
+        callback = function()
+            pcall(vim.api.nvim_del_augroup_by_id, group)
+        end,
+    })
+end
+
 -- Show the calendar view in a new buffer
 function M.show()
     -- Check if calendar is already open
@@ -443,6 +480,8 @@ function M.show()
     vim.keymap.set("n", "?", function()
         toggle_help(buf, main_config.daily_notes_dir)
     end, { buffer = buf, noremap = true, silent = true, desc = "Toggle help" })
+
+    setup_diagnostic_refresh(buf, main_config.daily_notes_dir)
 end
 
 return M

@@ -273,7 +273,7 @@ local function open_note_obsidian(offset, origin_win, calendar_buf, close_calend
     local current_win = vim.api.nvim_get_current_win()
     vim.api.nvim_set_current_win(origin_win)
 
-    if vim.fn.exists(":ObsidianToday") == 0 then
+    if vim.fn.exists(":Obsidian") == 0 then
         local ok = pcall(function()
             require("lazy").load({ plugins = { "obsidian.nvim" } })
         end)
@@ -284,7 +284,7 @@ local function open_note_obsidian(offset, origin_win, calendar_buf, close_calend
     end
 
     local success, err = pcall(function()
-        vim.cmd(string.format(":ObsidianToday %d", offset))
+        vim.cmd(string.format(":Obsidian today %d", offset))
     end)
 
     if not success then
